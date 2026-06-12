@@ -1,0 +1,193 @@
+<Window x:Class="Apex.Views.CategoryManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Categories"
+        Width="420"
+        Height="520"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#1E1E2E"
+        Foreground="#CDD6F4"
+        FontFamily="Segoe UI, sans-serif"
+        TextElement.FontSize="13">
+
+    <Window.Resources>
+        <Style x:Key="ActionButton" TargetType="Button">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Category list -->
+        <ScrollViewer Grid.Row="0"
+                      VerticalScrollBarVisibility="Auto"
+                      Margin="0,0,0,12">
+            <ItemsControl x:Name="CategoryList"
+                          Focusable="False">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="#313244"
+                                CornerRadius="6"
+                                Padding="8,6"
+                                Margin="0,0,0,6">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Color swatch -->
+                                <Border Grid.Column="0"
+                                        Width="16"
+                                        Height="16"
+                                        CornerRadius="3"
+                                        Background="{Binding Color}"
+                                        Margin="0,0,8,0"
+                                        VerticalAlignment="Center" />
+
+                                <!-- Name -->
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding Name}"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Foreground="#CDD6F4"
+                                           VerticalAlignment="Center" />
+
+                                <!-- Edit button -->
+                                <Button Grid.Column="2"
+                                        Content="Edit"
+                                        Style="{StaticResource ActionButton}"
+                                        Background="#45475A"
+                                        Foreground="#CDD6F4"
+                                        Margin="4,0"
+                                        Tag="{Binding}"
+                                        Click="EditCategory_Click" />
+
+                                <!-- Delete button -->
+                                <Button Grid.Column="3"
+                                        Content="&#x2716;"
+                                        Style="{StaticResource ActionButton}"
+                                        Width="28"
+                                        Padding="0"
+                                        Background="#E24B4A"
+                                        Foreground="White"
+                                        Tag="{Binding}"
+                                        Click="DeleteCategory_Click" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <!-- Add / Edit section -->
+        <Border Grid.Row="1"
+                Background="#313244"
+                CornerRadius="8"
+                Padding="12,10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Name input -->
+                <TextBox x:Name="CategoryNameBox"
+                         Grid.Row="0"
+                         Grid.Column="0"
+                         FontSize="13"
+                         Padding="6,3"
+                         Margin="0,0,6,8"
+                         Background="#45475A"
+                         Foreground="#CDD6F4"
+                         BorderBrush="#585B70"
+                         BorderThickness="1"
+                         CaretBrush="#CDD6F4"
+                         TextChanged="CategoryNameBox_TextChanged" />
+
+                <!-- Add / Save button -->
+                <Button x:Name="AddSaveButton"
+                        Grid.Row="0"
+                        Grid.Column="1"
+                        Content="Add"
+                        Style="{StaticResource ActionButton}"
+                        Background="#1D9E75"
+                        Foreground="White"
+                        Margin="0,0,0,8"
+                        Width="60"
+                        IsEnabled="False"
+                        Click="AddSaveButton_Click" />
+
+                <!-- Cancel edit button -->
+                <Button x:Name="CancelEditButton"
+                        Grid.Row="0"
+                        Grid.Column="2"
+                        Content="Cancel"
+                        Style="{StaticResource ActionButton}"
+                        Background="#45475A"
+                        Foreground="#CDD6F4"
+                        Margin="4,0,0,8"
+                        Width="60"
+                        Visibility="Collapsed"
+                        Click="CancelEditButton_Click" />
+
+                <!-- Preset color picker -->
+                <WrapPanel x:Name="ColorPicker"
+                           Grid.Row="1"
+                           Grid.ColumnSpan="3"
+                           Margin="0,0,0,6">
+                    <!-- Colors added in code-behind -->
+                </WrapPanel>
+
+                <!-- Hex color input -->
+                <Grid Grid.Row="2" Grid.ColumnSpan="3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="#"
+                               FontSize="13"
+                               FontWeight="Bold"
+                               Foreground="#6C7086"
+                               VerticalAlignment="Center"
+                               Margin="0,0,4,0" />
+                    <TextBox x:Name="HexColorBox"
+                             Grid.Column="1"
+                             FontSize="11"
+                             FontFamily="Consolas"
+                             Padding="4,2"
+                             Background="#45475A"
+                             Foreground="#CDD6F4"
+                             BorderBrush="#585B70"
+                             BorderThickness="1"
+                             CaretBrush="#CDD6F4"
+                             Text="CDD6F4"
+                             MaxLength="6"
+                             TextChanged="HexColorBox_TextChanged" />
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
