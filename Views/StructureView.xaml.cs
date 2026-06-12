@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -477,6 +477,22 @@ namespace Apex.Views
                     "Error",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
+            }
+        }
+
+
+        public void SelectFile(string relativePath)
+        {
+            ClearSelection();
+            _selectedPaths.Clear();
+
+            var item = FindItemByPath(relativePath);
+            if (item != null)
+            {
+                item.IsSelected = true;
+                _selectedPaths.Add(relativePath);
+                _lastClickedPath = relativePath;
+                MultipleFilesSelected?.Invoke(new List<string> { relativePath });
             }
         }
 

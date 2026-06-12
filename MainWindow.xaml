@@ -1,4 +1,4 @@
-<Window x:Class="Apex.MainWindow"
+﻿<Window x:Class="Apex.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -64,13 +64,16 @@
                 </StackPanel>
 
                 <!-- Center: Board / Structure toggle -->
+                Dwa oddzielne problemy.
+1. Kolor toggleów
+Problem leży w XAML — ToggleButton ma wbudowany system Trigger który nadpisuje kolory ustawiane z code-behind. Trzeba nadpisać cały Template w XAML dla obu toggleów. W MainWindow.xaml zmień sekcję Board/Structure toggle:
+xml
                 <Border Grid.Column="1"
-                        BorderBrush="#45475A"
-                        BorderThickness="1"
-                        CornerRadius="6"
-                        Height="30"
-                        Margin="0,0,0,0"
-                        VerticalAlignment="Center">
+        BorderBrush="#45475A"
+        BorderThickness="1"
+        CornerRadius="6"
+        Height="30"
+        VerticalAlignment="Center">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -78,39 +81,85 @@
                         </Grid.ColumnDefinitions>
 
                         <ToggleButton x:Name="BoardToggle"
-                                      Grid.Column="0"
-                                      Content="Board"
-                                      FontSize="12"
-                                      FontWeight="SemiBold"
-                                      Padding="12,0"
-                                      MinWidth="60"
-                                      Height="28"
-                                      IsChecked="True"
-                                      Background="Transparent"
-                                      Foreground="#A6ADC8"
-                                      BorderThickness="0"
-                                      Cursor="Hand"
-                                      Checked="BoardToggle_Checked"
-                                      Unchecked="BoardToggle_Unchecked">
-                            <ToggleButton.Resources>
-                                <SolidColorBrush x:Key="ToggleButtonCheckOver" Color="#45475A" />
-                            </ToggleButton.Resources>
+                      Grid.Column="0"
+                      Content="Board"
+                      FontSize="12"
+                      FontWeight="SemiBold"
+                      Padding="12,0"
+                      MinWidth="60"
+                      Height="28"
+                      IsChecked="True"
+                      BorderThickness="0"
+                      Cursor="Hand"
+                      Checked="BoardToggle_Checked"
+                      Unchecked="BoardToggle_Unchecked">
+                            <ToggleButton.Style>
+                                <Style TargetType="ToggleButton">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="Foreground" Value="#585B70"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                                <Border Background="{TemplateBinding Background}"
+                                        CornerRadius="5">
+                                                    <ContentPresenter HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter Property="Background" Value="#313244"/>
+                                            <Setter Property="Foreground" Value="#CDD6F4"/>
+                                        </Trigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#45475A"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ToggleButton.Style>
                         </ToggleButton>
 
                         <ToggleButton x:Name="StructureToggle"
-                                      Grid.Column="1"
-                                      Content="Structure"
-                                      FontSize="12"
-                                      FontWeight="SemiBold"
-                                      Padding="12,0"
-                                      MinWidth="60"
-                                      Height="28"
-                                      Background="Transparent"
-                                      Foreground="#A6ADC8"
-                                      BorderThickness="0"
-                                      Cursor="Hand"
-                                      Checked="StructureToggle_Checked"
-                                      Unchecked="StructureToggle_Unchecked" />
+                      Grid.Column="1"
+                      Content="Structure"
+                      FontSize="12"
+                      FontWeight="SemiBold"
+                      Padding="12,0"
+                      MinWidth="60"
+                      Height="28"
+                      BorderThickness="0"
+                      Cursor="Hand"
+                      Checked="StructureToggle_Checked"
+                      Unchecked="StructureToggle_Unchecked">
+                            <ToggleButton.Style>
+                                <Style TargetType="ToggleButton">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="Foreground" Value="#585B70"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                                <Border Background="{TemplateBinding Background}"
+                                        CornerRadius="5">
+                                                    <ContentPresenter HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter Property="Background" Value="#313244"/>
+                                            <Setter Property="Foreground" Value="#CDD6F4"/>
+                                        </Trigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#45475A"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ToggleButton.Style>
+                        </ToggleButton>
                     </Grid>
                 </Border>
 
@@ -235,44 +284,45 @@
             <Grid.ColumnDefinitions>
                 <!-- Left panel (width remembered from drag) -->
                 <ColumnDefinition x:Name="LeftPanelColumn"
-                                  Width="300" />
+                          Width="300" />
                 <!-- Draggable splitter -->
-                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition x:Name="SplitterColumn" Width="Auto" />
                 <!-- Right panel -->
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="RightPanelColumn" Width="*" />
             </Grid.ColumnDefinitions>
 
             <!-- Left Panel -->
             <Border Grid.Column="0"
-                    Background="#181825"
-                    BorderBrush="#313244"
-                    BorderThickness="0,0,1,0">
+            Background="#181825"
+            BorderBrush="#313244"
+            BorderThickness="0,0,1,0">
                 <ContentControl x:Name="LeftPanelContent" />
             </Border>
 
-            <!-- Splitter -->
-            <GridSplitter Grid.Column="1"
-                          Width="4"
-                          Background="#313244"
-                          HorizontalAlignment="Stretch"
-                          ResizeBehavior="PreviousAndNext"
-                          DragCompleted="Splitter_DragCompleted" />
+            <GridSplitter x:Name="MainSplitter"
+              Grid.Column="1"
+              Width="4"
+              Background="#313244"
+              HorizontalAlignment="Stretch"
+              ResizeBehavior="PreviousAndNext"
+              DragCompleted="Splitter_DragCompleted" />
 
             <!-- Right Panel -->
-            <Grid Grid.Column="2"
-                  Background="#1E1E2E">
+            <Grid x:Name="RightPanelHost"
+      Grid.Column="2"
+      Background="#1E1E2E">
 
                 <!-- Placeholder shown when no note is selected -->
                 <TextBlock x:Name="RightPanelPlaceholder"
-                           Text="Select a note to view it."
-                           FontSize="18"
-                           Foreground="#585B70"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center" />
+                   Text="Select a note to view it."
+                   FontSize="18"
+                   Foreground="#585B70"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center" />
 
                 <!-- NoteViewer (visible when a note is loaded) -->
                 <ContentControl x:Name="NoteViewerHost"
-                                Visibility="Collapsed" />
+                        Visibility="Collapsed" />
             </Grid>
         </Grid>
 

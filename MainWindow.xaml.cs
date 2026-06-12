@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -23,6 +23,7 @@ namespace Apex
         private readonly NoteViewer _noteViewer;
         private readonly MergeViewer _mergeViewer;
 
+
         private enum ViewMode
         {
             Board,
@@ -44,6 +45,9 @@ namespace Apex
             // Create view instances
             _boardView = new BoardView();
             _boardView.CardSelected += OnBoardCardSelected;
+
+            _boardView.CardEditRequested += OnBoardCardEditRequested;
+            _boardView.PreviewRequested += OnBoardPreviewRequested;
 
             _structureView = new StructureView();
             _structureView.MultipleFilesSelected += OnStructureFilesSelected;
@@ -70,35 +74,49 @@ namespace Apex
         {
             _currentMode = mode;
 
-            // Toggle button states
             BoardToggle.IsChecked = mode == ViewMode.Board;
             StructureToggle.IsChecked = mode == ViewMode.Structure;
 
-            // Toggle button visual — highlight the active one
             UpdateToggleButtonStyles(mode);
 
-            // Inject the active view
             switch (mode)
             {
                 case ViewMode.Board:
                     LeftPanelContent.Content = _boardView;
                     _boardView.LoadProject(Project);
+                    _boardView.FocusBoard();
                     Project.LastView = "board";
+
+                    MainSplitter.Visibility = Visibility.Collapsed;
+                    RightPanelHost.Visibility = Visibility.Collapsed;
+                    LeftPanelColumn.Width = new GridLength(1, GridUnitType.Star);
+                    SplitterColumn.Width = new GridLength(0);
+                    RightPanelColumn.Width = new GridLength(0);
                     break;
+
                 case ViewMode.Structure:
                     LeftPanelContent.Content = _structureView;
                     _structureView.LoadProject(Project);
                     Project.LastView = "structure";
+
+                    MainSplitter.Visibility = Visibility.Visible;
+                    RightPanelHost.Visibility = Visibility.Visible;
+                    LeftPanelColumn.Width = new GridLength(300);
+                    SplitterColumn.Width = GridLength.Auto;
+                    RightPanelColumn.Width = new GridLength(1, GridUnitType.Star);
                     break;
             }
         }
 
         private void UpdateToggleButtonStyles(ViewMode mode)
         {
-            var activeBg = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(49, 50, 68));
-            var activeFg = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(205, 214, 244));
+            var activeBg = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(49, 50, 68));
+            var activeFg = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(205, 214, 244)); // jasny tekst na aktywnym
             var inactiveBg = System.Windows.Media.Brushes.Transparent;
-            var inactiveFg = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(166, 173, 200));
+            var inactiveFg = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(88, 91, 112)); // ciemniejszy tekst na nieaktywnym
 
             BoardToggle.Background = mode == ViewMode.Board ? activeBg : inactiveBg;
             BoardToggle.Foreground = mode == ViewMode.Board ? activeFg : inactiveFg;
@@ -109,6 +127,12 @@ namespace Apex
         // ──────────────────────────────────────────────
         //  Toolbar event handlers
         // ──────────────────────────────────────────────
+
+        private void OnBoardPreviewRequested(NoteCard card)
+        {
+            SetViewMode(ViewMode.Structure);
+            _structureView.SelectFile(card.RelativePath);
+        }
 
         private void BoardToggle_Checked(object sender, RoutedEventArgs e)
         {
@@ -141,6 +165,16 @@ namespace Apex
         // ──────────────────────────────────────────────
         //  Settings (category manager)
         // ──────────────────────────────────────────────
+
+        private void OnBoardCardEditRequested(NoteCard card)
+        {
+            string fullPath = Path.Combine(Project.RootFolder, card.RelativePath);
+            if (!File.Exists(fullPath)) return;
+
+            ShowRightPanelContent(_noteViewer);
+            _noteViewer.LoadNote(fullPath, Project);
+            _noteViewer.EnterEditMode();
+        }
 
         private void SettingsButton_Click(object sender, RoutedEventArgs e)
         {
@@ -227,10 +261,8 @@ namespace Apex
 
         private void OnStructureFindOnBoard(string relativePath)
         {
-            // Switch to board view
             SetViewMode(ViewMode.Board);
-
-            // Focus the card
+            _boardView.FocusBoard();
             _boardView.FocusCard(relativePath);
         }
 

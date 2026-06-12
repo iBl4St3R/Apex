@@ -1,10 +1,11 @@
+﻿using Apex.Models;
+using Apex.Services;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using Apex.Models;
-using Apex.Services;
+using System.Windows.Media.Media3D;
 
 namespace Apex.Views
 {
@@ -22,6 +23,8 @@ namespace Apex.Views
         /// Fires when a card is clicked (not dragged). Passes the NoteCard.
         /// </summary>
         public event Action<NoteCard>? CardSelected;
+        public event Action<NoteCard>? CardEditRequested;
+        public event Action<NoteCard>? PreviewRequested;
 
         // ── Pan state ──
         private bool _isPanning;
@@ -228,35 +231,38 @@ namespace Apex.Views
             if (!string.IsNullOrEmpty(card.CategoryId) && Project != null)
             {
                 var cat = Project.Categories.FirstOrDefault(c => c.Id == card.CategoryId);
-                if (cat != null)
-                {
-                    catColor = cat.Color;
-                    catName = cat.Name;
-                }
+                if (cat != null) { catColor = cat.Color; catName = cat.Name; }
             }
 
-            var stripColor = catColor != null ? ParseHexBrush(catColor) : new SolidColorBrush(Color.FromRgb(69, 71, 90));
+            var stripBrush = catColor != null
+                ? ParseHexBrush(catColor)
+                : new SolidColorBrush(Color.FromRgb(69, 71, 90));
 
             string fullPath = Project != null
                 ? FileService.GetFullPath(Project.RootFolder, card.RelativePath)
                 : string.Empty;
-            string createdDate = "";
-            string modifiedDate = "";
+
+            string modifiedDateTime = "";
             if (!string.IsNullOrEmpty(fullPath) && File.Exists(fullPath))
             {
-                try
-                {
-                    var fi = new FileInfo(fullPath);
-                    createdDate = fi.CreationTime.ToString("yyyy-MM-dd");
-                    modifiedDate = fi.LastWriteTime.ToString("yyyy-MM-dd");
-                }
+                try { modifiedDateTime = new FileInfo(fullPath).LastWriteTime.ToString("yyyy-MM-dd HH:mm"); }
                 catch { }
             }
 
+            // Rozmiary i preview
+            double cardHeight = card.CardSize switch { "medium" => 160, "large" => 320, _ => 100 };
+            int previewMaxChars = card.CardSize switch { "medium" => 220, "large" => 600, _ => 120 };
+
+            string previewText = "";
+            if (!string.IsNullOrEmpty(fullPath) && File.Exists(fullPath))
+                previewText = GetPreviewText(fullPath, previewMaxChars);
+
+            // Outer card border
             var cardBorder = new Border
             {
                 Width = 220,
-                MinHeight = 80,
+                Height = cardHeight,
+                ClipToBounds = true,
                 Background = new SolidColorBrush(Color.FromRgb(30, 30, 46)),
                 BorderBrush = new SolidColorBrush(Color.FromRgb(49, 50, 68)),
                 BorderThickness = new Thickness(1),
@@ -266,23 +272,30 @@ namespace Apex.Views
                 Focusable = false
             };
 
-            var grid = new Grid();
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            // Outer grid: color strip | content
+            var outerGrid = new Grid();
+            outerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
+            outerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-            grid.Children.Add(new Border
+            // Color strip
+            outerGrid.Children.Add(new Border
             {
-                Background = stripColor,
+                Background = stripBrush,
                 CornerRadius = new CornerRadius(8, 0, 0, 8),
                 Width = 4,
                 HorizontalAlignment = HorizontalAlignment.Left
             });
 
-            var contentStack = new StackPanel { Margin = new Thickness(8, 6, 8, 6) };
+            // Inner grid: 3 rows — title row | preview | date
+            var innerGrid = new Grid { Margin = new Thickness(8, 6, 8, 6) };
+            innerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });      // title
+            innerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // preview
+            innerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });      // date
 
-            var topRow = new Grid();
-            topRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            topRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            // — Row 0: title + category badge —
+            var titleRow = new Grid();
+            titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var titleBlock = new TextBlock
             {
@@ -290,17 +303,17 @@ namespace Apex.Views
                 FontSize = 13,
                 FontWeight = FontWeights.Bold,
                 Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244)),
-                TextTrimming = System.Windows.TextTrimming.CharacterEllipsis,
+                TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center
             };
             Grid.SetColumn(titleBlock, 0);
-            topRow.Children.Add(titleBlock);
+            titleRow.Children.Add(titleBlock);
 
             if (catName != null)
             {
                 var badge = new Border
                 {
-                    Background = stripColor,
+                    Background = stripBrush,
                     CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(4, 1, 4, 1),
                     Margin = new Thickness(4, 0, 0, 0),
@@ -314,64 +327,59 @@ namespace Apex.Views
                     }
                 };
                 Grid.SetColumn(badge, 1);
-                topRow.Children.Add(badge);
+                titleRow.Children.Add(badge);
             }
 
-            contentStack.Children.Add(topRow);
+            Grid.SetRow(titleRow, 0);
+            innerGrid.Children.Add(titleRow);
 
+            // — Row 1: preview text —
             var previewBlock = new TextBlock
             {
-                Text = "",
                 FontSize = 11,
                 Foreground = new SolidColorBrush(Color.FromRgb(108, 112, 134)),
                 TextWrapping = TextWrapping.Wrap,
-                MaxHeight = 120,
+                MaxHeight = card.CardSize == "minimum" ? 34 : double.PositiveInfinity,
                 Margin = new Thickness(0, 4, 0, 0),
-                Visibility = Visibility.Collapsed,
-                Tag = "PreviewBlock"
+                VerticalAlignment = VerticalAlignment.Top,
+                TextTrimming = TextTrimming.CharacterEllipsis
             };
-            contentStack.Children.Add(previewBlock);
 
-            var bottomRow = new StackPanel
+            // Wstaw tekst z zachowaniem nowych linii
+            foreach (var (line, idx) in previewText.Split('\n')
+                .Select((l, i) => (l, i)))
             {
-                Orientation = Orientation.Horizontal,
-                Margin = new Thickness(0, 6, 0, 0)
-            };
-            if (!string.IsNullOrEmpty(createdDate))
-            {
-                bottomRow.Children.Add(new TextBlock
-                {
-                    Text = createdDate,
-                    FontSize = 10,
-                    Foreground = new SolidColorBrush(Color.FromRgb(108, 112, 134)),
-                    Margin = new Thickness(0, 0, 8, 0)
-                });
+                if (idx > 0) previewBlock.Inlines.Add(new System.Windows.Documents.LineBreak());
+                previewBlock.Inlines.Add(new System.Windows.Documents.Run(line));
             }
-            if (!string.IsNullOrEmpty(modifiedDate))
+
+
+            Grid.SetRow(previewBlock, 1);
+            innerGrid.Children.Add(previewBlock);
+
+            // — Row 2: date (przyciśnięta do dołu) —
+            if (!string.IsNullOrEmpty(modifiedDateTime))
             {
-                bottomRow.Children.Add(new TextBlock
+                var dateBlock = new TextBlock
                 {
-                    Text = modifiedDate,
+                    Text = modifiedDateTime,
                     FontSize = 10,
-                    Foreground = new SolidColorBrush(Color.FromRgb(108, 112, 134))
-                });
+                    Foreground = new SolidColorBrush(Color.FromRgb(88, 91, 112)),
+                    VerticalAlignment = VerticalAlignment.Bottom,
+                    Margin = new Thickness(0, 2, 0, 0)
+                };
+                Grid.SetRow(dateBlock, 2);
+                innerGrid.Children.Add(dateBlock);
             }
-            contentStack.Children.Add(bottomRow);
 
-            Grid.SetColumn(contentStack, 1);
-            grid.Children.Add(contentStack);
-            cardBorder.Child = grid;
+            Grid.SetColumn(innerGrid, 1);
+            outerGrid.Children.Add(innerGrid);
+            cardBorder.Child = outerGrid;
 
-            // Card drag events
+            // Events
             cardBorder.MouseLeftButtonDown += Card_MouseLeftButtonDown;
             cardBorder.MouseMove += Card_MouseMove;
             cardBorder.MouseLeftButtonUp += Card_MouseLeftButtonUp;
-
-            // Card hover preview
-            cardBorder.MouseEnter += Card_MouseEnter;
-            cardBorder.MouseLeave += Card_MouseLeave;
-
-            // Card context menu
             cardBorder.ContextMenu = BuildCardContextMenu(card, cardBorder);
 
             return cardBorder;
@@ -399,7 +407,8 @@ namespace Apex.Views
 
         private void Card_MouseMove(object sender, MouseEventArgs e)
         {
-            if (_isDraggingCard && _dragElement != null && _dragCard != null && e.LeftButton == MouseButtonState.Pressed)
+            if (_isDraggingCard && _dragElement != null && _dragCard != null
+                && e.LeftButton == MouseButtonState.Pressed)
             {
                 Point current = e.GetPosition(BoardCanvas);
                 double dx = current.X - _dragStartMouse.X;
@@ -412,8 +421,12 @@ namespace Apex.Views
                 {
                     double newLeft = _dragStartLeft + dx;
                     double newTop = _dragStartTop + dy;
-                    newLeft = Math.Max(0, Math.Min(newLeft, BoardCanvas.Width - 220));
-                    newTop = Math.Max(0, Math.Min(newTop, BoardCanvas.Height - 80));
+
+                    // Soft bounds — karty mogą być wszędzie na kanwie,
+                    // ale nie wypadają poza jej logiczny obszar
+                    newLeft = Math.Max(0, Math.Min(newLeft, 9780));
+                    newTop = Math.Max(0, Math.Min(newTop, 9920));
+
                     Canvas.SetLeft(_dragElement, newLeft);
                     Canvas.SetTop(_dragElement, newTop);
                 }
@@ -451,64 +464,73 @@ namespace Apex.Views
         //  Card hover preview
         // ──────────────────────────────────────────────
 
-        private void Card_MouseEnter(object sender, MouseEventArgs e)
-        {
-            if (sender is Border border && border.Tag is NoteCard card && Project != null)
-            {
-                _previewCard = border;
-                string fullPath = FileService.GetFullPath(Project.RootFolder, card.RelativePath);
-                if (File.Exists(fullPath))
-                {
-                    string previewText = GetPreviewText(fullPath, 300);
-                    var previewBlock = FindPreviewBlock(border);
-                    if (previewBlock != null)
-                    {
-                        previewBlock.Text = previewText;
-                        previewBlock.Visibility = Visibility.Visible;
-                    }
-                }
-            }
-        }
+        //private void Card_MouseEnter(object sender, MouseEventArgs e)
+        //{
+        //    if (sender is Border border && border.Tag is NoteCard card && Project != null)
+        //    {
+        //        _previewCard = border;
+        //        string fullPath = FileService.GetFullPath(Project.RootFolder, card.RelativePath);
+        //        if (File.Exists(fullPath))
+        //        {
+        //            string previewText = GetPreviewText(fullPath, 300);
+        //            var previewBlock = FindPreviewBlock(border);
+        //            if (previewBlock != null)
+        //            {
+        //                previewBlock.Text = previewText;
+        //                previewBlock.Visibility = Visibility.Visible;
+        //            }
+        //        }
+        //    }
+        //}
 
-        private void Card_MouseLeave(object sender, MouseEventArgs e)
-        {
-            if (sender is Border border)
-            {
-                var previewBlock = FindPreviewBlock(border);
-                if (previewBlock != null)
-                    previewBlock.Visibility = Visibility.Collapsed;
-                _previewCard = null;
-            }
-        }
+        //private void Card_MouseLeave(object sender, MouseEventArgs e)
+        //{
+        //    if (sender is Border border)
+        //    {
+        //        var previewBlock = FindPreviewBlock(border);
+        //        if (previewBlock != null)
+        //            previewBlock.Visibility = Visibility.Collapsed;
+        //        _previewCard = null;
+        //    }
+        //}
 
-        private static TextBlock? FindPreviewBlock(Border cardBorder)
-        {
-            if (cardBorder.Child is Grid grid && grid.Children.Count > 1 && grid.Children[1] is StackPanel stack)
-            {
-                foreach (var child in stack.Children)
-                {
-                    if (child is TextBlock tb && tb.Tag is string s && s == "PreviewBlock")
-                        return tb;
-                }
-            }
-            return null;
-        }
+        //private static TextBlock? FindPreviewBlock(Border cardBorder)
+        //{
+        //    if (cardBorder.Child is Grid grid && grid.Children.Count > 1 && grid.Children[1] is StackPanel stack)
+        //    {
+        //        foreach (var child in stack.Children)
+        //        {
+        //            if (child is TextBlock tb && tb.Tag is string s && s == "PreviewBlock")
+        //                return tb;
+        //        }
+        //    }
+        //    return null;
+        //}
 
         private static string GetPreviewText(string fullPath, int maxChars)
         {
             try
             {
                 string content = File.ReadAllText(fullPath);
-                string plain = System.Text.RegularExpressions.Regex.Replace(content,
-                    @"[#*_~`>\-\[\]()!|]", " ");
-                plain = System.Text.RegularExpressions.Regex.Replace(plain, @"\s+", " ");
+
+                // Usuń nagłówki MD (# Title), bloki kodu, znaki formatowania
+                string plain = System.Text.RegularExpressions.Regex.Replace(
+                    content, @"^#{1,6}\s+", "",
+                    System.Text.RegularExpressions.RegexOptions.Multiline);
+                plain = System.Text.RegularExpressions.Regex.Replace(
+                    plain, @"```[\s\S]*?```", "");
+                plain = System.Text.RegularExpressions.Regex.Replace(
+                    plain, @"[*_~`>|\\]", "");
+
+                // Zamień wielokrotne puste linie na jedną
+                plain = System.Text.RegularExpressions.Regex.Replace(
+                    plain, @"\n{3,}", "\n\n");
+
+                // Przytnij do maxChars
                 plain = plain.Trim();
                 return plain.Length <= maxChars ? plain : plain[..maxChars] + "…";
             }
-            catch
-            {
-                return "";
-            }
+            catch { return ""; }
         }
 
         // ──────────────────────────────────────────────
@@ -519,8 +541,38 @@ namespace Apex.Views
         {
             var menu = new ContextMenu();
 
+            var previewItem = new MenuItem { Header = "Preview" };
+            previewItem.Click += (_, _) => PreviewRequested?.Invoke(card);
+            menu.Items.Add(previewItem);
+            menu.Items.Add(new Separator());
+
+            var sizeItem = new MenuItem { Header = "Set size" };
+            var sizeOptions = new (string Label, string Value)[]
+            {
+    ("Minimum", "minimum"),
+    ("Medium", "medium"),
+    ("Large", "large")
+            };
+            foreach (var (label, value) in sizeOptions)
+            {
+                var currentSize = string.IsNullOrEmpty(card.CardSize) ? "minimum" : card.CardSize;
+                var sizeOption = new MenuItem
+                {
+                    Header = label,
+                    IsChecked = string.Equals(currentSize, value, StringComparison.OrdinalIgnoreCase)
+                };
+                sizeOption.Click += (_, _) =>
+                {
+                    card.CardSize = value;
+                    ReplaceCardElement(card, cardElement);
+                    FileService.SaveProject(Project!);
+                };
+                sizeItem.Items.Add(sizeOption);
+            }
+            menu.Items.Add(sizeItem);
+
             var editItem = new MenuItem { Header = "Edit" };
-            editItem.Click += (_, _) => CardSelected?.Invoke(card);
+            editItem.Click += (_, _) => CardEditRequested?.Invoke(card);
             menu.Items.Add(editItem);
 
             var catItem = new MenuItem { Header = "Set category" };
@@ -672,8 +724,27 @@ namespace Apex.Views
             Point current = e.GetPosition(this);
             double dx = current.X - _panStartMouse.X;
             double dy = current.Y - _panStartMouse.Y;
-            PanTransform.X = _panStartTranslateX + dx;
-            PanTransform.Y = _panStartTranslateY + dy;
+
+            double newX = _panStartTranslateX + dx;
+            double newY = _panStartTranslateY + dy;
+
+            // Clamp: nie pozwól odskoczyć dalej niż 200px od krawędzi kanwy
+            const double margin = 200.0;
+            double vpw = CanvasContainer.ActualWidth;
+            double vph = CanvasContainer.ActualHeight;
+            double canvasScaled = 10000.0 * _zoomLevel;
+
+            // Max X: canvas lewa krawędź nie może być dalej niż +200px od lewej viewportu
+            double maxX = margin;
+            // Min X: canvas prawa krawędź nie może być dalej niż -200px od prawej viewportu
+            double minX = vpw - canvasScaled - margin;
+
+            double maxY = margin;
+            double minY = vph - canvasScaled - margin;
+
+            PanTransform.X = Math.Clamp(newX, minX, maxX);
+            PanTransform.Y = Math.Clamp(newY, minY, maxY);
+
             e.Handled = true;
         }
 
@@ -687,10 +758,9 @@ namespace Apex.Views
             }
         }
 
-        // ──────────────────────────────────────────────
-        //  Zoom (mouse wheel) — toward cursor
-        // ──────────────────────────────────────────────
 
+
+        // ── Zoom (mouse wheel) — toward cursor ──────────────────
         private void BoardView_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
         {
             double delta = e.Delta > 0 ? 0.1 : -0.1;
@@ -698,67 +768,70 @@ namespace Apex.Views
             if (Math.Abs(newZoom - _zoomLevel) < 0.01)
                 return;
 
-            // Mouse position relative to the transform host
-            Point mouse = e.GetPosition(CanvasTransformHost);
+            Point mouseInViewport = e.GetPosition(CanvasContainer);
+            double canvasMouseX = (mouseInViewport.X - PanTransform.X) / _zoomLevel;
+            double canvasMouseY = (mouseInViewport.Y - PanTransform.Y) / _zoomLevel;
 
-            double scale = newZoom / _zoomLevel;
             _zoomLevel = newZoom;
             ZoomTransform.ScaleX = _zoomLevel;
             ZoomTransform.ScaleY = _zoomLevel;
 
-            // Keep the point under the cursor fixed
-            PanTransform.X = mouse.X - scale * (mouse.X - PanTransform.X);
-            PanTransform.Y = mouse.Y - scale * (mouse.Y - PanTransform.Y);
+            double rawX = mouseInViewport.X - canvasMouseX * _zoomLevel;
+            double rawY = mouseInViewport.Y - canvasMouseY * _zoomLevel;
+
+            // Clamp po zoom
+            const double margin = 200.0;
+            double vpw = CanvasContainer.ActualWidth;
+            double vph = CanvasContainer.ActualHeight;
+            double canvasScaled = 10000.0 * _zoomLevel;
+
+            PanTransform.X = Math.Clamp(rawX, vpw - canvasScaled - margin, margin);
+            PanTransform.Y = Math.Clamp(rawY, vph - canvasScaled - margin, margin);
 
             e.Handled = true;
         }
 
-        // ──────────────────────────────────────────────
-        //  Right-click context menu on empty canvas
-        // ──────────────────────────────────────────────
-
-        private void CanvasContainer_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+        // ── Right-click context menu — new card at correct position ──
+        private void CanvasTransformHost_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
         {
-            if (e.OriginalSource is DependencyObject source)
-            {
-                if (FindAncestor<Border>(source, b => b.Tag is NoteCard) != null)
-                    return;
-            }
+            if (FindAncestor<Border>(e.OriginalSource as DependencyObject, b => b.Tag is NoteCard) != null)
+                return;
 
             var menu = new ContextMenu();
-            var newNoteItem = new MenuItem { Header = "New note" };
-            newNoteItem.Click += (_, _) =>
-            {
-                Point clickPos = Mouse.GetPosition(BoardCanvas);
-                clickPos = new Point(clickPos.X / _zoomLevel, clickPos.Y / _zoomLevel);
-                CreateNewNoteAt(clickPos);
-            };
-            menu.Items.Add(newNoteItem);
-            CanvasTransformHost.ContextMenu = menu;
+
+            // Mouse in viewport space → convert to canvas space
+            Point mouseInViewport = e.GetPosition(CanvasContainer);
+            Point canvasPos = new Point(
+                (mouseInViewport.X - PanTransform.X) / _zoomLevel,
+                (mouseInViewport.Y - PanTransform.Y) / _zoomLevel
+            );
+
+            var newCardItem = new MenuItem { Header = "New card" };
+            newCardItem.Click += (_, _) => CreateNewNoteAt(canvasPos);
+            menu.Items.Add(newCardItem);
+
+            var resetViewItem = new MenuItem { Header = "Reset view" };
+            resetViewItem.Click += (_, _) => FitAllCards();
+            menu.Items.Add(resetViewItem);
+
+            menu.PlacementTarget = CanvasTransformHost;
+            menu.IsOpen = true;
+            e.Handled = true;
         }
 
-        // ──────────────────────────────────────────────
-        //  Reset view button
-        // ──────────────────────────────────────────────
 
-        private void ResetViewButton_Click(object sender, RoutedEventArgs e)
-        {
-            FitAllCards();
-        }
-
-        // ──────────────────────────────────────────────
-        //  Ctrl+N / Ctrl+Home
-        // ──────────────────────────────────────────────
-
+        // ── Ctrl+N — center of viewport in canvas space ──────────
         private void BoardView_PreviewKeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.N && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
-                // Viewport center in canvas coordinates (accounting for zoom + pan)
                 double vpw = CanvasContainer.ActualWidth;
                 double vph = CanvasContainer.ActualHeight;
+
+                // Viewport center → canvas coordinates
                 double canvasX = (vpw / 2 - PanTransform.X) / _zoomLevel;
                 double canvasY = (vph / 2 - PanTransform.Y) / _zoomLevel;
+
                 CreateNewNoteAt(new Point(canvasX, canvasY));
                 e.Handled = true;
             }
@@ -812,14 +885,24 @@ namespace Apex.Views
         //  Utility
         // ──────────────────────────────────────────────
 
+        public void FocusBoard()
+        {
+            Dispatcher.BeginInvoke(new Action(() => CanvasContainer.Focus()), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
         private static T? FindAncestor<T>(DependencyObject? child, Func<T, bool>? predicate = null)
-            where T : DependencyObject
+    where T : DependencyObject
         {
             while (child != null)
             {
                 if (child is T t && (predicate == null || predicate(t)))
                     return t;
-                child = VisualTreeHelper.GetParent(child);
+
+                // VisualTreeHelper.GetParent rzuca na non-Visual (np. Run, Inline)
+                // Użyj LogicalTreeHelper jako fallback
+                child = child is Visual or Visual3D
+                    ? VisualTreeHelper.GetParent(child)
+                    : LogicalTreeHelper.GetParent(child);
             }
             return null;
         }

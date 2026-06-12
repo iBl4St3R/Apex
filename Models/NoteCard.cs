@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace Apex.Models;
 
@@ -19,6 +19,9 @@ public class NoteCard
 
     [JsonPropertyName("categoryId")]
     public string? CategoryId { get; set; }
+
+    [JsonPropertyName("cardSize")] public string CardSize { get; set; } = "minimum";
+
 
     public NoteCard() { }
 
