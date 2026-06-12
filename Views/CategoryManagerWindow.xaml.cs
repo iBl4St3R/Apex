@@ -218,6 +218,11 @@ namespace Apex.Views
 
         private void CancelEditButton_Click(object sender, RoutedEventArgs e)
         {
+            CancelEdit();
+        }
+
+        private void CancelEdit()
+        {
             _editingCategory = null;
             AddSaveButton.Content = "Add";
             CancelEditButton.Visibility = Visibility.Collapsed;
@@ -261,7 +266,7 @@ namespace Apex.Views
 
                 // If we were editing this category, cancel edit
                 if (_editingCategory?.Id == category.Id)
-                    CancelEditButton_Click(null, null);
+                    CancelEdit();
 
                 RefreshCategoryList();
                 FileService.SaveProject(_project);

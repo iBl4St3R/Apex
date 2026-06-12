@@ -6,24 +6,26 @@
              mc:Ignorable="d"
              d:DesignHeight="450" d:DesignWidth="800"
              Background="#181825"
-             PreviewKeyDown="BoardView_PreviewKeyDown">
+             PreviewKeyDown="BoardView_PreviewKeyDown"
+             PreviewMouseLeftButtonDown="BoardView_PreviewMouseLeftButtonDown"
+             PreviewMouseMove="BoardView_PreviewMouseMove"
+             PreviewMouseLeftButtonUp="BoardView_PreviewMouseLeftButtonUp"
+             PreviewMouseWheel="BoardView_PreviewMouseWheel">
 
     <Grid>
-        <ScrollViewer x:Name="BoardScroll"
-                      HorizontalScrollBarVisibility="Auto"
-                      VerticalScrollBarVisibility="Auto"
-                      Background="#181825"
-                      PreviewMouseWheel="BoardScroll_PreviewMouseWheel">
+        <Border x:Name="CanvasContainer"
+                ClipToBounds="True"
+                Background="#181825"
+                Focusable="True">
 
-            <Grid x:Name="CanvasContainer"
+            <Grid x:Name="CanvasTransformHost"
                   RenderTransformOrigin="0,0"
                   Width="10000"
                   Height="10000"
-                  MouseLeftButtonDown="CanvasContainer_MouseLeftButtonDown"
-                  MouseMove="CanvasContainer_MouseMove"
-                  MouseLeftButtonUp="CanvasContainer_MouseLeftButtonUp"
-                  ContextMenuOpening="CanvasContainer_ContextMenuOpening"
-                  Focusable="True">
+                  MouseDown="CanvasTransformHost_MouseDown"
+                  MouseMove="CanvasTransformHost_MouseMove"
+                  MouseUp="CanvasTransformHost_MouseUp"
+                  ContextMenuOpening="CanvasContainer_ContextMenuOpening">
 
                 <Grid.RenderTransform>
                     <TransformGroup>
@@ -36,7 +38,7 @@
                     <!-- Cards are added dynamically here -->
                 </Canvas>
             </Grid>
-        </ScrollViewer>
+        </Border>
 
         <!-- Reset view button overlay (top-right) -->
         <Button x:Name="ResetViewButton"
