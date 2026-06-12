@@ -168,11 +168,8 @@ namespace Apex
 
         private void OnBoardCardEditRequested(NoteCard card)
         {
-            string fullPath = Path.Combine(Project.RootFolder, card.RelativePath);
-            if (!File.Exists(fullPath)) return;
-
-            ShowRightPanelContent(_noteViewer);
-            _noteViewer.LoadNote(fullPath, Project);
+            SetViewMode(ViewMode.Structure);
+            _structureView.SelectFile(card.RelativePath);
             _noteViewer.EnterEditMode();
         }
 

@@ -47,6 +47,25 @@ namespace Apex.Views
         private const double ZoomMin = 0.5;
         private const double ZoomMax = 2.5;
 
+        private readonly PreviewCache _previewCache = new();
+
+        // ── Resize state ──
+        private bool _isResizing;
+        private Border? _resizeElement;
+        private NoteCard? _resizeCard;
+        private Point _resizeStartMouse;
+        private double _resizeStartWidth, _resizeStartHeight;
+        private ResizeEdge _resizeEdge;
+
+        private enum ResizeEdge { None, Right, Bottom, BottomRight }
+
+        private const double ResizeHitZone = 8.0; // px od krawędzi
+        private const double CardMinWidth = 220;
+        private const double CardMinHeight = 120;
+        private const double CardMaxWidth = 880 * 4;  // 4× large
+        private const double CardMaxHeight = 320 * 4;
+
+
         public BoardView()
         {
             InitializeComponent();
@@ -60,8 +79,10 @@ namespace Apex.Views
         public void LoadProject(ApexProject project)
         {
             Project = project;
+            _previewCache.StartWatching(project.RootFolder);
             RenderCards();
-            Dispatcher.BeginInvoke(new Action(FitAllCards), System.Windows.Threading.DispatcherPriority.Loaded);
+            Dispatcher.BeginInvoke(new Action(FitAllCards),
+                System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
         public void RefreshCards()
@@ -222,6 +243,9 @@ namespace Apex.Views
         //  Card element creation
         // ──────────────────────────────────────────────
 
+
+
+
         private Border CreateCardElement(NoteCard card)
         {
             string title = Path.GetFileNameWithoutExtension(card.RelativePath);
@@ -250,17 +274,28 @@ namespace Apex.Views
             }
 
             // Rozmiary i preview
-            double cardHeight = card.CardSize switch { "medium" => 160, "large" => 320, _ => 100 };
-            int previewMaxChars = card.CardSize switch { "medium" => 220, "large" => 600, _ => 120 };
+            double cardWidth = card.CustomWidth ?? card.CardSize switch
+            {
+                "medium" => 440,
+                "large" => 880,
+                _ => 220
+            };
+            double cardHeight = card.CustomHeight ?? card.CardSize switch
+            {
+                "medium" => 160,
+                "large" => 320,
+                _ => 120
+            };
+            int previewMaxChars = card.CardSize switch { "medium" => 300, "large" => 600, _ => 200 };
 
-            string previewText = "";
-            if (!string.IsNullOrEmpty(fullPath) && File.Exists(fullPath))
-                previewText = GetPreviewText(fullPath, previewMaxChars);
+            string previewText = !string.IsNullOrEmpty(fullPath) && File.Exists(fullPath)
+                                ? _previewCache.GetPreview(fullPath, previewMaxChars)
+                                : "";
 
             // Outer card border
             var cardBorder = new Border
             {
-                Width = 220,
+                Width = cardWidth,   
                 Height = cardHeight,
                 ClipToBounds = true,
                 Background = new SolidColorBrush(Color.FromRgb(30, 30, 46)),
@@ -333,29 +368,14 @@ namespace Apex.Views
             Grid.SetRow(titleRow, 0);
             innerGrid.Children.Add(titleRow);
 
-            // — Row 1: preview text —
-            var previewBlock = new TextBlock
-            {
-                FontSize = 11,
-                Foreground = new SolidColorBrush(Color.FromRgb(108, 112, 134)),
-                TextWrapping = TextWrapping.Wrap,
-                MaxHeight = card.CardSize == "minimum" ? 34 : double.PositiveInfinity,
-                Margin = new Thickness(0, 4, 0, 0),
-                VerticalAlignment = VerticalAlignment.Top,
-                TextTrimming = TextTrimming.CharacterEllipsis
-            };
-
-            // Wstaw tekst z zachowaniem nowych linii
-            foreach (var (line, idx) in previewText.Split('\n')
-                .Select((l, i) => (l, i)))
-            {
-                if (idx > 0) previewBlock.Inlines.Add(new System.Windows.Documents.LineBreak());
-                previewBlock.Inlines.Add(new System.Windows.Documents.Run(line));
-            }
-
-
+            double previewMaxHeight = (card.CustomHeight.HasValue || card.CardSize is "large" or "medium")
+                                    ? double.PositiveInfinity
+                                    : 64;
+            var previewBlock = BuildPreviewTextBlock(previewText, previewMaxHeight);
             Grid.SetRow(previewBlock, 1);
             innerGrid.Children.Add(previewBlock);
+
+            
 
             // — Row 2: date (przyciśnięta do dołu) —
             if (!string.IsNullOrEmpty(modifiedDateTime))
@@ -366,6 +386,7 @@ namespace Apex.Views
                     FontSize = 10,
                     Foreground = new SolidColorBrush(Color.FromRgb(88, 91, 112)),
                     VerticalAlignment = VerticalAlignment.Bottom,
+                    HorizontalAlignment = HorizontalAlignment.Right,
                     Margin = new Thickness(0, 2, 0, 0)
                 };
                 Grid.SetRow(dateBlock, 2);
@@ -380,6 +401,7 @@ namespace Apex.Views
             cardBorder.MouseLeftButtonDown += Card_MouseLeftButtonDown;
             cardBorder.MouseMove += Card_MouseMove;
             cardBorder.MouseLeftButtonUp += Card_MouseLeftButtonUp;
+            cardBorder.MouseLeave += Card_ResizeMouseLeave;
             cardBorder.ContextMenu = BuildCardContextMenu(card, cardBorder);
 
             return cardBorder;
@@ -393,6 +415,14 @@ namespace Apex.Views
         {
             if (sender is Border border && border.Tag is NoteCard card)
             {
+                // Sprawdź czy to resize
+                Point local = e.GetPosition(border);
+                if (GetResizeEdge(border, local) != ResizeEdge.None)
+                {
+                    Card_ResizeMouseLeftButtonDown(sender, e);
+                    return;
+                }
+
                 _isDraggingCard = true;
                 _dragElement = border;
                 _dragCard = card;
@@ -407,6 +437,33 @@ namespace Apex.Views
 
         private void Card_MouseMove(object sender, MouseEventArgs e)
         {
+            // Resize ma pierwszeństwo
+            if (_isResizing && _resizeElement != null && _resizeCard != null
+                && e.LeftButton == MouseButtonState.Pressed)
+            {
+                Point current = e.GetPosition(BoardCanvas);
+                double dx = current.X - _resizeStartMouse.X;
+                double dy = current.Y - _resizeStartMouse.Y;
+
+                double newW = _resizeStartWidth;
+                double newH = _resizeStartHeight;
+
+                if (_resizeEdge == ResizeEdge.Right || _resizeEdge == ResizeEdge.BottomRight)
+                    newW = Math.Clamp(_resizeStartWidth + dx, CardMinWidth, CardMaxWidth);
+                if (_resizeEdge == ResizeEdge.Bottom || _resizeEdge == ResizeEdge.BottomRight)
+                    newH = Math.Clamp(_resizeStartHeight + dy, CardMinHeight, CardMaxHeight);
+
+                _resizeElement.Width = newW;
+                _resizeElement.Height = newH;
+                e.Handled = true;
+                return;
+            }
+
+            // Hover cursor na krawędziach (gdy nie dragujemy)
+            if (!_isDraggingCard && !_isResizing && sender is Border b)
+                Card_ResizeMouseMove(sender, e);
+
+            // Normalny drag
             if (_isDraggingCard && _dragElement != null && _dragCard != null
                 && e.LeftButton == MouseButtonState.Pressed)
             {
@@ -419,13 +476,11 @@ namespace Apex.Views
 
                 if (_didDrag)
                 {
-                    double newLeft = _dragStartLeft + dx;
-                    double newTop = _dragStartTop + dy;
+                    double cardW = _dragElement.ActualWidth > 0 ? _dragElement.ActualWidth : 220;
+                    double cardH = _dragElement.ActualHeight > 0 ? _dragElement.ActualHeight : 120;
 
-                    // Soft bounds — karty mogą być wszędzie na kanwie,
-                    // ale nie wypadają poza jej logiczny obszar
-                    newLeft = Math.Max(0, Math.Min(newLeft, 9780));
-                    newTop = Math.Max(0, Math.Min(newTop, 9920));
+                    double newLeft = Math.Max(0, Math.Min(_dragStartLeft + dx, 10000 - cardW));
+                    double newTop = Math.Max(0, Math.Min(_dragStartTop + dy, 10000 - cardH));
 
                     Canvas.SetLeft(_dragElement, newLeft);
                     Canvas.SetTop(_dragElement, newTop);
@@ -436,6 +491,25 @@ namespace Apex.Views
 
         private void Card_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
+            // Zakończ resize
+            if (_isResizing && _resizeElement != null && _resizeCard != null)
+            {
+                _resizeElement.ReleaseMouseCapture();
+
+                // Zapisz wymiary do modelu
+                _resizeCard.CustomWidth = _resizeElement.Width;
+                _resizeCard.CustomHeight = _resizeElement.Height;
+                if (Project != null)
+                    FileService.SaveProject(Project);
+
+                _isResizing = false;
+                _resizeElement = null;
+                _resizeCard = null;
+                e.Handled = true;
+                return;
+            }
+
+            // Normalny drag end
             if (_isDraggingCard && _dragElement != null && _dragCard != null)
             {
                 _dragElement.ReleaseMouseCapture();
@@ -459,6 +533,174 @@ namespace Apex.Views
                 e.Handled = true;
             }
         }
+
+        /// <summary>
+        /// Renders simple markdown into a TextBlock with Inlines.
+        /// Supports: headings (bold+slightly larger), **bold**, *italic*, plain lines.
+        /// No FlowDocument overhead — safe for 20+ cards.
+        /// </summary>
+        private static TextBlock BuildPreviewTextBlock(string text, double maxHeight)
+        {
+            var tb = new TextBlock
+            {
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Color.FromRgb(108, 112, 134)),
+                TextWrapping = TextWrapping.Wrap,
+                MaxHeight = maxHeight,
+                Margin = new Thickness(0, 4, 0, 0),
+                VerticalAlignment = VerticalAlignment.Top,
+                LineHeight = 16,          // stały odstęp — eliminuje "skoki" między liniami
+                LineStackingStrategy = LineStackingStrategy.BlockLineHeight
+            };
+
+            var lines = text.Split('\n');
+            bool firstLine = true;
+
+            foreach (string rawLine in lines)
+            {
+                string line = rawLine.TrimEnd('\r');
+
+                if (!firstLine)
+                    tb.Inlines.Add(new System.Windows.Documents.LineBreak());
+                firstLine = false;
+
+                // Nagłówek (#, ##, ###)
+                var headingMatch = System.Text.RegularExpressions.Regex.Match(line, @"^(#{1,3})\s+(.*)");
+                if (headingMatch.Success)
+                {
+                    double fs = headingMatch.Groups[1].Value.Length switch { 1 => 14, 2 => 13, _ => 12 };
+                    tb.Inlines.Add(new System.Windows.Documents.Run(headingMatch.Groups[2].Value)
+                    {
+                        FontWeight = FontWeights.Bold,
+                        FontSize = fs,
+                        Foreground = new SolidColorBrush(Color.FromRgb(180, 194, 222))
+                    });
+                    continue;
+                }
+
+                // Pusta linia — mały spacer zamiast pełnej przerwy
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    tb.Inlines.Add(new System.Windows.Documents.Run(" "));
+                    continue;
+                }
+
+                // Linia z bold/italic — parsuj inline
+                AddInlineFormattedRuns(tb.Inlines, line);
+            }
+
+            return tb;
+        }
+
+        private static void AddInlineFormattedRuns(
+    System.Windows.Documents.InlineCollection inlines, string line)
+        {
+            // Prosta maszyna stanów dla **bold** i *italic*
+            var pattern = new System.Text.RegularExpressions.Regex(
+                @"(\*\*(.+?)\*\*)|(\*(.+?)\*)|(`(.+?)`)");
+
+            int lastIndex = 0;
+            foreach (System.Text.RegularExpressions.Match m in pattern.Matches(line))
+            {
+                // Tekst przed dopasowaniem
+                if (m.Index > lastIndex)
+                    inlines.Add(new System.Windows.Documents.Run(line[lastIndex..m.Index])
+                    {
+                        Foreground = new SolidColorBrush(Color.FromRgb(108, 112, 134))
+                    });
+
+                if (m.Groups[1].Success) // **bold**
+                    inlines.Add(new System.Windows.Documents.Run(m.Groups[2].Value)
+                    {
+                        FontWeight = FontWeights.Bold,
+                        Foreground = new SolidColorBrush(Color.FromRgb(180, 194, 222))
+                    });
+                else if (m.Groups[3].Success) // *italic*
+                    inlines.Add(new System.Windows.Documents.Run(m.Groups[4].Value)
+                    {
+                        FontStyle = FontStyles.Italic,
+                        Foreground = new SolidColorBrush(Color.FromRgb(147, 163, 200))
+                    });
+                else if (m.Groups[5].Success) // `code`
+                    inlines.Add(new System.Windows.Documents.Run(m.Groups[6].Value)
+                    {
+                        FontFamily = new FontFamily("Consolas"),
+                        FontSize = 10,
+                        Foreground = new SolidColorBrush(Color.FromRgb(243, 139, 168))
+                    });
+
+                lastIndex = m.Index + m.Length;
+            }
+
+            // Reszta linii po ostatnim dopasowaniu
+            if (lastIndex < line.Length)
+                inlines.Add(new System.Windows.Documents.Run(line[lastIndex..])
+                {
+                    Foreground = new SolidColorBrush(Color.FromRgb(108, 112, 134))
+                });
+        }
+
+        private static ResizeEdge GetResizeEdge(Border card, Point localPoint)
+        {
+            double w = card.ActualWidth;
+            double h = card.ActualHeight;
+            double z = ResizeHitZone;
+
+            bool onRight = localPoint.X >= w - z;
+            bool onBottom = localPoint.Y >= h - z;
+
+            if (onRight && onBottom) return ResizeEdge.BottomRight;
+            if (onRight) return ResizeEdge.Right;
+            if (onBottom) return ResizeEdge.Bottom;
+            return ResizeEdge.None;
+        }
+
+        private void Card_ResizeMouseMove(object sender, MouseEventArgs e)
+        {
+            if (_isResizing) return; // podczas resize nie zmieniamy kursora
+
+            if (sender is Border border)
+            {
+                Point local = e.GetPosition(border);
+                var edge = GetResizeEdge(border, local);
+                border.Cursor = edge switch
+                {
+                    ResizeEdge.BottomRight => Cursors.SizeNWSE,
+                    ResizeEdge.Right => Cursors.SizeWE,
+                    ResizeEdge.Bottom => Cursors.SizeNS,
+                    _ => Cursors.Hand
+                };
+            }
+        }
+
+        private void Card_ResizeMouseLeave(object sender, MouseEventArgs e)
+        {
+            if (!_isResizing && sender is Border border)
+                border.Cursor = Cursors.Hand;
+        }
+
+        private void Card_ResizeMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not Border border || border.Tag is not NoteCard card) return;
+
+            Point local = e.GetPosition(border);
+            var edge = GetResizeEdge(border, local);
+            if (edge == ResizeEdge.None) return;
+
+            // Rozpocznij resize zamiast drag
+            _isResizing = true;
+            _resizeElement = border;
+            _resizeCard = card;
+            _resizeEdge = edge;
+            _resizeStartMouse = e.GetPosition(BoardCanvas);
+            _resizeStartWidth = border.ActualWidth;
+            _resizeStartHeight = border.ActualHeight;
+
+            border.CaptureMouse();
+            e.Handled = true; // zapobiega uruchomieniu Card_MouseLeftButtonDown
+        }
+
+
 
         // ──────────────────────────────────────────────
         //  Card hover preview
@@ -507,31 +749,7 @@ namespace Apex.Views
         //    return null;
         //}
 
-        private static string GetPreviewText(string fullPath, int maxChars)
-        {
-            try
-            {
-                string content = File.ReadAllText(fullPath);
 
-                // Usuń nagłówki MD (# Title), bloki kodu, znaki formatowania
-                string plain = System.Text.RegularExpressions.Regex.Replace(
-                    content, @"^#{1,6}\s+", "",
-                    System.Text.RegularExpressions.RegexOptions.Multiline);
-                plain = System.Text.RegularExpressions.Regex.Replace(
-                    plain, @"```[\s\S]*?```", "");
-                plain = System.Text.RegularExpressions.Regex.Replace(
-                    plain, @"[*_~`>|\\]", "");
-
-                // Zamień wielokrotne puste linie na jedną
-                plain = System.Text.RegularExpressions.Regex.Replace(
-                    plain, @"\n{3,}", "\n\n");
-
-                // Przytnij do maxChars
-                plain = plain.Trim();
-                return plain.Length <= maxChars ? plain : plain[..maxChars] + "…";
-            }
-            catch { return ""; }
-        }
 
         // ──────────────────────────────────────────────
         //  Card context menu
@@ -564,6 +782,8 @@ namespace Apex.Views
                 sizeOption.Click += (_, _) =>
                 {
                     card.CardSize = value;
+                    card.CustomWidth = null;  // reset ręcznego resizu
+                    card.CustomHeight = null;
                     ReplaceCardElement(card, cardElement);
                     FileService.SaveProject(Project!);
                 };
@@ -923,5 +1143,8 @@ namespace Apex.Views
             catch { }
             return new SolidColorBrush(Color.FromRgb(136, 136, 136));
         }
+
+
+        ~BoardView() => _previewCache.Dispose();
     }
 }

@@ -22,6 +22,11 @@ public class NoteCard
 
     [JsonPropertyName("cardSize")] public string CardSize { get; set; } = "minimum";
 
+    [JsonPropertyName("customWidth")]
+    public double? CustomWidth { get; set; }
+
+    [JsonPropertyName("customHeight")]
+    public double? CustomHeight { get; set; }
 
     public NoteCard() { }
 

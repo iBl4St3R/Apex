@@ -64,10 +64,6 @@
                 </StackPanel>
 
                 <!-- Center: Board / Structure toggle -->
-                Dwa oddzielne problemy.
-1. Kolor toggleów
-Problem leży w XAML — ToggleButton ma wbudowany system Trigger który nadpisuje kolory ustawiane z code-behind. Trzeba nadpisać cały Template w XAML dla obu toggleów. W MainWindow.xaml zmień sekcję Board/Structure toggle:
-xml
                 <Border Grid.Column="1"
         BorderBrush="#45475A"
         BorderThickness="1"
