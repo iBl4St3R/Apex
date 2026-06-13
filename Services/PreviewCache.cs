@@ -13,7 +13,7 @@ public sealed class PreviewCache : IDisposable
 {
     private readonly ConcurrentDictionary<string, string> _cache = new(StringComparer.OrdinalIgnoreCase);
     private FileSystemWatcher? _watcher;
-    private const int MaxPreviewChars = 600;
+    private const int MaxPreviewChars = 10000;
 
     public void StartWatching(string rootFolder)
     {
@@ -73,7 +73,7 @@ public sealed class PreviewCache : IDisposable
     {
         try
         {
-            const int readBytes = 8192;
+            const int readBytes = 65536;
             byte[] buffer = new byte[readBytes];
             int bytesRead;
 

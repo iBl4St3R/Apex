@@ -4,6 +4,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using Markdig;
+using System.IO;
 
 namespace Apex.Services;
 
@@ -23,9 +24,10 @@ public static class MarkdownRenderer
         .Build();
 
     public static FlowDocument RenderToFlowDocument(
-        string markdown,
-        Action<string>? onLinkClicked = null,
-        Func<string, bool>? linkExists = null)
+    string markdown,
+    Action<string>? onLinkClicked = null,
+    Func<string, bool>? linkExists = null,
+    string? noteFolder = null)  // ← dodaj
     {
         try
         {
@@ -46,7 +48,7 @@ public static class MarkdownRenderer
 
             foreach (var block in document)
             {
-                var blockElement = RenderBlock(block, onLinkClicked, linkExists);
+                var blockElement = RenderBlock(block, onLinkClicked, linkExists, noteFolder);
                 if (blockElement != null)
                     flowDoc.Blocks.Add(blockElement);
             }
@@ -67,36 +69,40 @@ public static class MarkdownRenderer
     // ── Block rendering ───────────────────────────────────────────────────────
 
     private static Block? RenderBlock(
-        Markdig.Syntax.MarkdownObject block,
-        Action<string>? onLinkClicked,
-        Func<string, bool>? linkExists)
+    Markdig.Syntax.MarkdownObject block,
+    Action<string>? onLinkClicked,
+    Func<string, bool>? linkExists,
+    string? noteFolder = null)
     {
         return block switch
         {
-            Markdig.Syntax.ParagraphBlock para => RenderParagraph(para, onLinkClicked, linkExists),
-            Markdig.Syntax.HeadingBlock heading => RenderHeading(heading, onLinkClicked, linkExists),
+            Markdig.Syntax.ParagraphBlock para => RenderParagraph(para, onLinkClicked, linkExists, noteFolder),
+            Markdig.Syntax.HeadingBlock heading => RenderHeading(heading, onLinkClicked, linkExists, noteFolder),
             Markdig.Syntax.FencedCodeBlock code => RenderCodeBlock(code),
             Markdig.Syntax.CodeBlock indented => RenderIndentedCodeBlock(indented),
-            Markdig.Syntax.ListBlock list => RenderListBlock(list, onLinkClicked, linkExists),
+            Markdig.Syntax.ListBlock list => RenderListBlock(list, onLinkClicked, linkExists, noteFolder),
             Markdig.Syntax.ThematicBreakBlock => RenderThematicBreak(),
+            Markdig.Syntax.HtmlBlock html => RenderHtmlFallback(html, noteFolder),
             _ => null
         };
     }
 
     private static Paragraph RenderParagraph(
-        Markdig.Syntax.ParagraphBlock para,
-        Action<string>? onLinkClicked,
-        Func<string, bool>? linkExists)
+    Markdig.Syntax.ParagraphBlock para,
+    Action<string>? onLinkClicked,
+    Func<string, bool>? linkExists,
+    string? noteFolder = null)
     {
         var paragraph = new Paragraph { Margin = new Thickness(0, 0, 0, 10) };
-        RenderInlines(para.Inline, paragraph.Inlines, onLinkClicked, linkExists);
+        RenderInlines(para.Inline, paragraph.Inlines, onLinkClicked, linkExists, noteFolder);
         return paragraph;
     }
 
     private static Paragraph RenderHeading(
-        Markdig.Syntax.HeadingBlock heading,
-        Action<string>? onLinkClicked,
-        Func<string, bool>? linkExists)
+    Markdig.Syntax.HeadingBlock heading,
+    Action<string>? onLinkClicked,
+    Func<string, bool>? linkExists,
+    string? noteFolder = null)
     {
         double fontSize = heading.Level switch { 1 => 28, 2 => 22, 3 => 18, _ => 16 };
         var paragraph = new Paragraph
@@ -106,8 +112,86 @@ public static class MarkdownRenderer
             FontWeight = heading.Level <= 2 ? FontWeights.Bold : FontWeights.SemiBold,
             Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244))
         };
-        RenderInlines(heading.Inline, paragraph.Inlines, onLinkClicked, linkExists);
+        RenderInlines(heading.Inline, paragraph.Inlines, onLinkClicked, linkExists, noteFolder);
         return paragraph;
+    }
+
+    private static Block RenderHtmlFallback(Markdig.Syntax.HtmlBlock html, string? noteFolder = null)
+    {
+        string rawHtml = string.Join("\n",
+            html.Lines.Lines.Select(l => l.ToString()).Where(l => l != null));
+
+        // Wyciągnij wszystkie <img src="..."> z bloku HTML
+        var imgMatches = Regex.Matches(rawHtml,
+            @"<img[^>]+src\s*=\s*[""']([^""']+)[""'][^>]*>",
+            RegexOptions.IgnoreCase);
+
+        if (imgMatches.Count == 0)
+            return new Paragraph(); // inne tagi HTML — cicho ignoruj, pusty paragraf
+
+        // Są obrazy — zwróć Section z obrazami
+        var section = new Section();
+        foreach (Match m in imgMatches)
+        {
+            string src = m.Groups[1].Value;
+            var para = new Paragraph { Margin = new Thickness(0, 4, 0, 4) };
+            AddImageInline(para.Inlines, src, noteFolder);
+            section.Blocks.Add(para);
+        }
+        return section;
+    }
+
+    private static void AddImageInline(InlineCollection target, string src, string? noteFolder)
+    {
+        try
+        {
+            Uri uri;
+            if (Uri.IsWellFormedUriString(src, UriKind.Absolute))
+            {
+                // http:// lub absolutna ścieżka
+                uri = new Uri(src, UriKind.Absolute);
+            }
+            else if (noteFolder != null)
+            {
+                // Ścieżka względna — rozwiąż względem folderu notatki
+                string fullPath = Path.GetFullPath(Path.Combine(noteFolder, src));
+                if (!File.Exists(fullPath))
+                {
+                    target.Add(new Run($"[Image not found: {src}]")
+                    {
+                        Foreground = new SolidColorBrush(Color.FromRgb(88, 91, 112)),
+                        FontStyle = FontStyles.Italic
+                    });
+                    return;
+                }
+                uri = new Uri(fullPath, UriKind.Absolute);
+            }
+            else return;
+
+            var bitmap = new System.Windows.Media.Imaging.BitmapImage();
+            bitmap.BeginInit();
+            bitmap.UriSource = uri;
+            bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            bitmap.EndInit();
+
+            var image = new System.Windows.Controls.Image
+            {
+                Source = bitmap,
+                MaxWidth = 600,
+                Stretch = System.Windows.Media.Stretch.Uniform,
+                Margin = new Thickness(0, 4, 0, 4)
+            };
+
+            target.Add(new InlineUIContainer(image));
+        }
+        catch
+        {
+            target.Add(new Run($"[Image: {src}]")
+            {
+                Foreground = new SolidColorBrush(Color.FromRgb(88, 91, 112)),
+                FontStyle = FontStyles.Italic
+            });
+        }
     }
 
     private static Paragraph RenderCodeBlock(Markdig.Syntax.FencedCodeBlock code)
@@ -160,9 +244,10 @@ public static class MarkdownRenderer
     }
 
     private static Section RenderListBlock(
-        Markdig.Syntax.ListBlock list,
-        Action<string>? onLinkClicked,
-        Func<string, bool>? linkExists)
+    Markdig.Syntax.ListBlock list,
+    Action<string>? onLinkClicked,
+    Func<string, bool>? linkExists,
+    string? noteFolder = null)
     {
         var section = new Section();
         bool isOrdered = list.IsOrdered;
@@ -180,7 +265,7 @@ public static class MarkdownRenderer
                 });
                 var listPara = listItem.OfType<Markdig.Syntax.ParagraphBlock>().FirstOrDefault();
                 if (listPara != null)
-                    RenderInlines(listPara.Inline, para.Inlines, onLinkClicked, linkExists);
+                    RenderInlines(listPara.Inline, para.Inlines, onLinkClicked, linkExists, noteFolder);
                 section.Blocks.Add(para);
                 index++;
             }
@@ -202,10 +287,11 @@ public static class MarkdownRenderer
     // ── Inline rendering ──────────────────────────────────────────────────────
 
     private static void RenderInlines(
-        Markdig.Syntax.Inlines.ContainerInline? inlineContainer,
-        InlineCollection target,
-        Action<string>? onLinkClicked,
-        Func<string, bool>? linkExists = null)
+    Markdig.Syntax.Inlines.ContainerInline? inlineContainer,
+    InlineCollection target,
+    Action<string>? onLinkClicked,
+    Func<string, bool>? linkExists = null,
+    string? noteFolder = null)  // ← dodaj
     {
         if (inlineContainer == null) return;
 
@@ -218,7 +304,7 @@ public static class MarkdownRenderer
                     break;
 
                 case Markdig.Syntax.Inlines.EmphasisInline emphasis:
-                    RenderEmphasis(emphasis, target, onLinkClicked, linkExists);
+                    RenderEmphasis(emphasis, target, onLinkClicked, linkExists, noteFolder);
                     break;
 
                 case Markdig.Syntax.Inlines.CodeInline codeInline:
@@ -229,6 +315,10 @@ public static class MarkdownRenderer
                         Background = new SolidColorBrush(Color.FromRgb(30, 30, 46)),
                         Foreground = new SolidColorBrush(Color.FromRgb(243, 139, 168))
                     });
+                    break;
+
+                case Markdig.Syntax.Inlines.LinkInline img when img.IsImage:
+                    AddImageInline(target, img.Url ?? "", noteFolder);
                     break;
 
                 case Markdig.Syntax.Inlines.LinkInline link:
@@ -297,19 +387,20 @@ public static class MarkdownRenderer
     }
 
     private static void RenderEmphasis(
-        Markdig.Syntax.Inlines.EmphasisInline emphasis,
-        InlineCollection target,
-        Action<string>? onLinkClicked,
-        Func<string, bool>? linkExists = null)
+    Markdig.Syntax.Inlines.EmphasisInline emphasis,
+    InlineCollection target,
+    Action<string>? onLinkClicked,
+    Func<string, bool>? linkExists = null,
+    string? noteFolder = null)  // ← dodaj
     {
         bool isBold = emphasis.DelimiterCount >= 2;
         bool isItalic = emphasis.DelimiterChar == '*' || emphasis.DelimiterChar == '_';
         bool isStrikethrough = emphasis.DelimiterChar == '~';
 
         var temp = new Span();
-        RenderInlines(emphasis, temp.Inlines, onLinkClicked, linkExists);
+        RenderInlines(emphasis, temp.Inlines, onLinkClicked, linkExists, noteFolder);  // ← przekaż
 
-        foreach (var child in temp.Inlines)
+        foreach (var child in temp.Inlines.ToList())
         {
             if (child is Run run)
             {

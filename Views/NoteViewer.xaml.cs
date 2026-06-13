@@ -149,7 +149,12 @@ namespace Apex.Views
 
         private void RenderMarkdown(string markdown)
         {
-            ReadContent.Document = MarkdownRenderer.RenderToFlowDocument(markdown,
+            string? noteFolder = _currentFilePath != null
+                ? Path.GetDirectoryName(_currentFilePath)
+                : null;
+
+            ReadContent.Document = MarkdownRenderer.RenderToFlowDocument(
+                markdown,
                 target => LinkClicked?.Invoke(target),
                 linkTarget =>
                 {
@@ -163,7 +168,8 @@ namespace Apex.Views
                             c.RelativePath.Replace('\\', '/').Replace(".md", ""),
                             linkTarget,
                             StringComparison.OrdinalIgnoreCase));
-                });
+                },
+                noteFolder);
         }
 
         // ──────────────────────────────────────────────

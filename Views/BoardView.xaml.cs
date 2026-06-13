@@ -69,6 +69,10 @@ namespace Apex.Views
         private readonly List<UIElement> _connectionLines = new();
 
 
+        // ── Image scaling settings (future: connect to Settings panel) ──
+        public static bool ScaleImagesDown = true;  // skaluj w dół jeśli szersze niż karta
+        public static bool ScaleImagesUp = true;    // skaluj w górę jeśli węższe niż karta
+
         public BoardView()
         {
             InitializeComponent();
@@ -287,20 +291,24 @@ namespace Apex.Views
                 catch { }
             }
 
-            // Rozmiary i preview
-            double cardWidth = card.CustomWidth ?? card.CardSize switch
-            {
-                "medium" => 440,
-                "large" => 880,
-                _ => 220
-            };
-            double cardHeight = card.CustomHeight ?? card.CardSize switch
+            double effectiveHeight = card.CustomHeight ?? card.CardSize switch
             {
                 "medium" => 160,
                 "large" => 320,
                 _ => 120
             };
-            int previewMaxChars = card.CardSize switch { "medium" => 300, "large" => 600, _ => 200 };
+            double effectiveWidth = card.CustomWidth ?? card.CardSize switch
+            {
+                "medium" => 440,
+                "large" => 880,
+                _ => 220
+            };
+
+            int previewMaxChars = card.CustomWidth.HasValue || card.CustomHeight.HasValue
+                ? (int)((effectiveHeight - 60) / 16.0 * (effectiveWidth / 10.0))
+                : card.CardSize switch { "medium" => 300, "large" => 600, _ => 100 };
+
+            previewMaxChars = Math.Clamp(previewMaxChars, 50, 8000);
 
             string previewText = !string.IsNullOrEmpty(fullPath) && File.Exists(fullPath)
                                 ? _previewCache.GetPreview(fullPath, previewMaxChars)
@@ -309,12 +317,12 @@ namespace Apex.Views
             // Outer card border
             var cardBorder = new Border
             {
-                Width = cardWidth,
-                Height = cardHeight,
+                Width = effectiveWidth,  
+                Height = effectiveHeight, 
                 ClipToBounds = true,
                 Background = new SolidColorBrush(Color.FromRgb(30, 30, 46)),
                 BorderBrush = card.Locked
-        ? new SolidColorBrush(Color.FromRgb(98, 79, 120))   // lekko fioletowe gdy locked
+        ? new SolidColorBrush(Color.FromRgb(98, 79, 120))
         : new SolidColorBrush(Color.FromRgb(49, 50, 68)),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(8),
@@ -603,6 +611,10 @@ namespace Apex.Views
                 // Zapisz wymiary do modelu
                 _resizeCard.CustomWidth = _resizeElement.Width;
                 _resizeCard.CustomHeight = _resizeElement.Height;
+
+                // Przebuduj kartę z nowymi wymiarami → przelicza previewMaxChars
+                ReplaceCardElement(_resizeCard, _resizeElement);  // ← dodaj tu
+
                 if (Project != null)
                     FileService.SaveProject(Project);
 
