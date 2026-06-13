@@ -13,12 +13,14 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <!-- External-change banner -->
             <RowDefinition Height="Auto" />
-            <!-- Toolbar -->
+            <!-- banner -->
             <RowDefinition Height="Auto" />
-            <!-- Content area -->
+            <!-- toolbar -->
             <RowDefinition Height="*" />
+            <!-- content -->
+            <RowDefinition Height="Auto" />
+            <!-- template bar -->
         </Grid.RowDefinitions>
 
         <!-- ════════════════════════════════════════
@@ -203,7 +205,72 @@
                         BorderBrush="#45475A"
                         Click="CancelButton_Click" />
 
-                
+                <!-- ════════════════════════════════════════
+     TEMPLATE METADATA BAR (visible only for .templates/ files)
+     ════════════════════════════════════════ -->
+                <Border x:Name="TemplateBar"
+        Grid.Row="3"
+        Background="#11111B"
+        BorderBrush="#313244"
+        BorderThickness="0,1,0,0"
+        Padding="12,8"
+        VerticalAlignment="Bottom"
+        Visibility="Collapsed">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="16"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Category -->
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="AUTO-CATEGORY"
+                       FontSize="10" FontWeight="SemiBold"
+                       Foreground="#6C7086"
+                       VerticalAlignment="Center"
+                       Margin="0,0,8,0"/>
+                            <ComboBox x:Name="TemplateCategory"
+                      Width="140"
+                      FontSize="12"
+                      Background="#313244"
+                      Foreground="#CDD6F4"
+                      BorderBrush="#45475A"
+                      SelectionChanged="TemplateCategory_SelectionChanged"/>
+                        </StackPanel>
+
+                        <!-- Target folder -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="DEFAULT FOLDER"
+                       FontSize="10" FontWeight="SemiBold"
+                       Foreground="#6C7086"
+                       VerticalAlignment="Center"
+                       Margin="0,0,8,0"/>
+                            <TextBox x:Name="TemplateFolderBox"
+                     Width="180"
+                     FontSize="12"
+                     Padding="6,3"
+                     Background="#313244"
+                     Foreground="#CDD6F4"
+                     BorderBrush="#45475A"
+                     BorderThickness="1"
+                     CaretBrush="#CDD6F4"
+                     ToolTip="Project-relative folder path, e.g. Tasks/Daily"
+                     TextChanged="TemplateFolderBox_TextChanged"/>
+                        </StackPanel>
+
+                        <!-- Placeholder for future MD editor toolbar -->
+                        <TextBlock Grid.Column="3"
+                   Text="Template options"
+                   FontSize="10"
+                   Foreground="#45475A"
+                   VerticalAlignment="Center"
+                   HorizontalAlignment="Right"
+                   Margin="0,0,8,0"/>
+                    </Grid>
+                </Border>
 
             </Grid>
         </Border>

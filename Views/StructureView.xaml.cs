@@ -648,7 +648,36 @@ namespace Apex.Views
             // Przenieś na board i pokaż kartę
             FindOnBoard?.Invoke(item.RelativePath);
         }
+
+
+        private void CtxCopyAsTemplate_Click(object sender, RoutedEventArgs e)
+        {
+            var item = GetContextItem(sender);
+            if (item == null || item.IsFolder) return;
+
+            string fullPath = FileService.GetFullPath(_project.RootFolder, item.RelativePath);
+            if (!File.Exists(fullPath)) return;
+
+            string defaultName = Path.GetFileNameWithoutExtension(item.RelativePath);
+            var dialog = new InputDialog("Save as Template", "Template name:");
+            dialog.Owner = Window.GetWindow(this);
+            dialog.Answer = defaultName;
+            if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.Answer))
+                return;
+
+            var template = TemplateService.CreateFromNote(
+                _project.RootFolder, fullPath, dialog.Answer.Trim());
+            if (template != null)
+                System.Windows.MessageBox.Show(
+                    $"Template \"{template.TemplateName}\" saved.\n" +
+                    $"Open it via Structure view in the .templates folder to set category and folder.",
+                    "Template Saved", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+
     }
+
+
 
     /// <summary>
     /// Represents a single item in the file tree.

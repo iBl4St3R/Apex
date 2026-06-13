@@ -81,9 +81,10 @@
                     <ContextMenu>
                         <MenuItem x:Name="CtxOpen" Header="Open" Click="CtxOpen_Click" />
                         <MenuItem x:Name="CtxFindOnBoard" Header="Find on board" Click="CtxFindOnBoard_Click" />
+                        <MenuItem x:Name="CtxCopyAsTemplate" Header="Copy as template" Click="CtxCopyAsTemplate_Click"/>
                         <MenuItem x:Name="CtxCreateCard" Header="⚠ Create card" Click="CtxCreateCard_Click" />
                         <Separator x:Name="CtxSep0" />
-                        <MenuItem x:Name="CtxNewNoteHere" Header="New note here" Click="CtxNewNoteHere_Click" />
+                        <MenuItem x:Name="CtxNewNoteHere" Header="New note here" Click="CtxNewNoteHere_Click" Visibility="Collapsed" />
                         <MenuItem x:Name="CtxNewSubfolder" Header="New subfolder" Click="CtxNewSubfolder_Click" />
                         <Separator x:Name="CtxSep1" />
                         <MenuItem x:Name="CtxRename" Header="Rename" Click="CtxRename_Click" />
@@ -123,6 +124,9 @@
             <HierarchicalDataTemplate.Triggers>
                 <DataTrigger Binding="{Binding IsFolder}" Value="True">
                     <Setter TargetName="IconText" Property="Text" Value="&#x1F4C1;" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsFolder}" Value="True">
+                    <Setter TargetName="CtxCopyAsTemplate" Property="Visibility" Value="Collapsed"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsFolder}" Value="False">
                     <Setter TargetName="IconText" Property="Text" Value="&#x1F4C4;" />

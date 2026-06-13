@@ -1271,6 +1271,34 @@ namespace Apex.Views
             menu.Items.Add(openExternalItem);
 
 
+            var copyAsTemplateItem = new MenuItem { Header = "Copy as template" };
+            copyAsTemplateItem.Click += (_, _) =>
+            {
+                if (Project == null) return;
+                string fullPath = FileService.GetFullPath(Project.RootFolder, card.RelativePath);
+                if (!File.Exists(fullPath)) return;
+
+                string defaultName = Path.GetFileNameWithoutExtension(card.RelativePath);
+                var nameDialog = new InputDialog("Save as Template",
+                    "Template name:")
+                {
+                    Owner = Window.GetWindow(this)
+                };
+                nameDialog.Answer = defaultName;
+                if (nameDialog.ShowDialog() != true ||
+                    string.IsNullOrWhiteSpace(nameDialog.Answer)) return;
+
+                var template = TemplateService.CreateFromNote(
+                    Project.RootFolder, fullPath, nameDialog.Answer.Trim());
+                if (template != null)
+                    System.Windows.MessageBox.Show(
+                        $"Template \"{template.TemplateName}\" saved.",
+                        "Template Saved", MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+            };
+            menu.Items.Add(copyAsTemplateItem);
+
+
             var deleteItem = new MenuItem { Header = "Delete" };
             deleteItem.Click += (_, _) =>
             {
@@ -1947,14 +1975,17 @@ namespace Apex.Views
         {
             if (Project == null) return;
 
-            var dialog = new InputDialog("New Note", "Enter a title for the new note:");
-            dialog.Owner = Window.GetWindow(this);
-            if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.Answer))
-                return;
+            var templates = TemplateService.LoadAll(Project.RootFolder);
+            var dialog = new NewNoteDialog(Project.RootFolder, templates)
+            {
+                Owner = Window.GetWindow(this)
+            };
 
-            string title = dialog.Answer.Trim();
+            if (dialog.ShowDialog() != true) return;
 
-            // Sanitize — usuń znaki niedozwolone w nazwach plików
+            string title = dialog.NoteTitle;
+
+            // Sanitize
             foreach (char c in Path.GetInvalidFileNameChars())
                 title = title.Replace(c.ToString(), "");
 
@@ -1966,14 +1997,27 @@ namespace Apex.Views
                 return;
             }
 
-            string relativePath = title + ".md";
+            // Determine target folder from template (or root)
+            string targetFolder = Project.RootFolder;
+            string? autoCategory = null;
+
+            if (dialog.SelectedTemplate != null)
+            {
+                targetFolder = TemplateService.ResolveTargetFolder(
+                    Project.RootFolder, dialog.SelectedTemplate);
+                autoCategory = dialog.SelectedTemplate.DefaultCategoryId;
+            }
+
+            string relativePath = FileService.GetRelativePath(
+                Project.RootFolder,
+                Path.Combine(targetFolder, title + ".md"));
+
             string fullPath = FileService.GetFullPath(Project.RootFolder, relativePath);
 
-            // Guard — duplikat w root folderze
             if (File.Exists(fullPath))
             {
                 System.Windows.MessageBox.Show(
-                    $"A note named \"{title}.md\" already exists in this folder.\n" +
+                    $"A note named \"{title}.md\" already exists in that folder.\n" +
                     "Please choose a different name.",
                     "Duplicate Name", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
@@ -1981,8 +2025,24 @@ namespace Apex.Views
 
             try
             {
-                FileService.CreateNoteFile(Project, relativePath);
-                var card = new NoteCard(relativePath, position.X, position.Y);
+                // Ensure subfolder exists
+                string? dir = Path.GetDirectoryName(fullPath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+
+                // Write content — blank or from template
+                string content;
+                if (dialog.SelectedTemplate != null)
+                    content = TemplateService.ReadContent(Project.RootFolder, dialog.SelectedTemplate);
+                else
+                    content = $"# {title}\n\n";
+
+                File.WriteAllText(fullPath, content);
+
+                var card = new NoteCard(relativePath, position.X, position.Y)
+                {
+                    CategoryId = autoCategory
+                };
                 Project.Cards.Add(card);
 
                 var element = CreateCardElement(card);
@@ -1991,6 +2051,14 @@ namespace Apex.Views
                 BoardCanvas.Children.Add(element);
 
                 FileService.SaveProject(Project);
+
+                // Navigate straight to edit mode in Structure
+                PreviewRequested?.Invoke(card);
+                // Small delay so the structure view has time to load
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    CardEditRequested?.Invoke(card);
+                }), System.Windows.Threading.DispatcherPriority.Background);
             }
             catch (Exception ex)
             {
