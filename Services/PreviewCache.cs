@@ -76,15 +76,15 @@ public sealed class PreviewCache : IDisposable
             const int readBytes = 65536;
             byte[] buffer = new byte[readBytes];
             int bytesRead;
-
             using (var fs = new FileStream(fullPath, FileMode.Open,
                        FileAccess.Read, FileShare.ReadWrite))
                 bytesRead = fs.Read(buffer, 0, readBytes);
 
             string raw = System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
 
-            string plain = System.Text.RegularExpressions.Regex.Replace(
-                raw, @"```[\s\S]*?```", "");
+            // Nie usuwamy code blocków — BuildPreviewElement obsługuje je jako ramki
+            string plain = raw;
+
             plain = System.Text.RegularExpressions.Regex.Replace(
                 plain, @"\[\[([^\]]+)\]\]", "apex_link§$1§");
             plain = System.Text.RegularExpressions.Regex.Replace(

@@ -121,23 +121,57 @@ public static class MarkdownRenderer
         string rawHtml = string.Join("\n",
             html.Lines.Lines.Select(l => l.ToString()).Where(l => l != null));
 
-        // Wyciągnij wszystkie <img src="..."> z bloku HTML
-        var imgMatches = Regex.Matches(rawHtml,
-            @"<img[^>]+src\s*=\s*[""']([^""']+)[""'][^>]*>",
-            RegexOptions.IgnoreCase);
+        var htmlTagRegex = new Regex(@"<[^>]+>", RegexOptions.IgnoreCase);
+        var imgRegex = new Regex(@"<img[^>]+src\s*=\s*[""']([^""']+)[""'][^>]*>", RegexOptions.IgnoreCase);
 
-        if (imgMatches.Count == 0)
-            return new Paragraph(); // inne tagi HTML — cicho ignoruj, pusty paragraf
-
-        // Są obrazy — zwróć Section z obrazami
         var section = new Section();
-        foreach (Match m in imgMatches)
+
+        bool pendingCenter = false;
+
+        foreach (string rawLine in rawHtml.Split('\n'))
         {
-            string src = m.Groups[1].Value;
-            var para = new Paragraph { Margin = new Thickness(0, 4, 0, 4) };
-            AddImageInline(para.Inlines, src, noteFolder);
-            section.Blocks.Add(para);
+            string line = rawLine.TrimEnd('\r');
+
+            var imgMatch = imgRegex.Match(line);
+            if (imgMatch.Success)
+            {
+                var para = new Paragraph { Margin = new Thickness(0, 4, 0, 4) };
+                AddImageInline(para.Inlines, imgMatch.Groups[1].Value, noteFolder);
+                section.Blocks.Add(para);
+                pendingCenter = false;
+            }
+            else
+            {
+                // Sprawdź czy ta linia zawiera tag z align="center"
+                if (htmlTagRegex.IsMatch(line))
+                {
+                    pendingCenter = Regex.IsMatch(line,
+                        @"align\s*=\s*[""']center[""']",
+                        RegexOptions.IgnoreCase);
+                }
+
+                string cleaned = htmlTagRegex.Replace(line, "").Trim();
+                if (!string.IsNullOrEmpty(cleaned))
+                {
+                    var para = new Paragraph
+                    {
+                        Margin = new Thickness(0, 0, 0, 4),
+                        TextAlignment = pendingCenter ? TextAlignment.Center : TextAlignment.Left
+                    };
+                    para.Inlines.Add(new Run(cleaned)
+                    {
+                        Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244))
+                    });
+                    section.Blocks.Add(para);
+                    pendingCenter = false; // reset po użyciu
+                }
+            }
         }
+
+        // Jeśli section jest pusty — zwróć pusty paragraf
+        if (!section.Blocks.Any())
+            return new Paragraph();
+
         return section;
     }
 
@@ -275,12 +309,12 @@ public static class MarkdownRenderer
 
     private static Block RenderThematicBreak()
     {
-        return new Paragraph(new Run(new string('─', 80)))
+        return new Paragraph
         {
-            Margin = new Thickness(0, 4, 0, 8),
-            FontSize = 10,
-            Foreground = new SolidColorBrush(Color.FromRgb(69, 71, 90)),
-            TextAlignment = TextAlignment.Center
+            Margin = new Thickness(0, 6, 0, 6),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(49, 50, 68)),
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Padding = new Thickness(0)
         };
     }
 

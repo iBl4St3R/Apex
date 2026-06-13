@@ -1,6 +1,7 @@
 ﻿using Apex.Models;
 using Apex.Services;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -419,9 +420,10 @@ namespace Apex.Views
             double previewMaxHeight = (card.CustomHeight.HasValue || card.CardSize is "large" or "medium")
                                     ? double.PositiveInfinity
                                     : 64;
-            var previewBlock = BuildPreviewTextBlock(
+            var previewBlock = BuildPreviewElement(
     previewText,
-    previewMaxHeight,
+    effectiveWidth,
+    !string.IsNullOrEmpty(fullPath) && File.Exists(fullPath) ? fullPath : null,
     linkTarget =>
     {
         if (Project == null) return;
@@ -433,7 +435,7 @@ namespace Apex.Views
         if (target != null)
             FocusCard(target.RelativePath);
     },
-    linkTarget => Project?.Cards.Any(c =>        // ← to jest nowy linkExists
+    linkTarget => Project?.Cards.Any(c =>
         string.Equals(
             Path.GetFileNameWithoutExtension(c.RelativePath),
             linkTarget,
@@ -650,11 +652,215 @@ namespace Apex.Views
             }
         }
 
-        /// <summary>
-        /// Renders simple markdown into a TextBlock with Inlines.
-        /// Supports: headings (bold+slightly larger), **bold**, *italic*, plain lines.
-        /// No FlowDocument overhead — safe for 20+ cards.
-        /// </summary>
+        private FrameworkElement BuildPreviewElement(
+    string text,
+    double cardWidth,
+    string? fullPath,
+    Action<string>? onLinkClicked = null,
+    Func<string, bool>? linkExists = null)
+        {
+            string? noteFolder = fullPath != null ? Path.GetDirectoryName(fullPath) : null;
+
+            var stack = new StackPanel
+            {
+                Margin = new Thickness(0, 4, 0, 0),
+                VerticalAlignment = VerticalAlignment.Top
+            };
+
+            var htmlImgRegex = new Regex(@"<img[^>]+src\s*=\s*[""']([^""']+)[""'][^>]*>", RegexOptions.IgnoreCase);
+            var mdImgRegex = new Regex(@"!\[[^\]]*\]\(([^)]+)\)");
+            var htmlTagRegex = new Regex(@"<[^>]+>");
+            var alignCenterRegex = new Regex(@"align\s*=\s*[""']center[""']", RegexOptions.IgnoreCase);
+
+            var pendingLines = new List<string>();
+            bool pendingCenter = false;
+
+            bool inCodeBlock = false;
+            var codeLines = new List<string>();
+
+            void FlushPendingText(bool centered = false)
+            {
+                if (pendingLines.Count == 0) return;
+                string joined = string.Join("\n", pendingLines);
+                if (!string.IsNullOrWhiteSpace(joined))
+                {
+                    var tb = BuildPreviewTextBlock(joined, double.PositiveInfinity, onLinkClicked, linkExists);
+                    if (centered)
+                        tb.TextAlignment = TextAlignment.Center;
+                    stack.Children.Add(tb);
+                }
+                pendingLines.Clear();
+            }
+
+            var lines = text.Split('\n');
+            foreach (string rawLine in lines)
+            {
+                string line = rawLine.TrimEnd('\r');
+
+                if (line.StartsWith("```"))
+                {
+                    if (!inCodeBlock)
+                    {
+                        FlushPendingText(pendingCenter);
+                        inCodeBlock = true;
+                        codeLines.Clear();
+                    }
+                    else
+                    {
+                        inCodeBlock = false;
+                        var codeBorder = new Border
+                        {
+                            Background = new SolidColorBrush(Color.FromRgb(24, 24, 37)),
+                            BorderBrush = new SolidColorBrush(Color.FromRgb(49, 50, 68)),
+                            BorderThickness = new Thickness(1),
+                            CornerRadius = new CornerRadius(4),
+                            Padding = new Thickness(8, 6, 8, 6),
+                            Margin = new Thickness(0, 2, 0, 2)
+                        };
+                        var codeText = new TextBlock
+                        {
+                            Text = string.Join("\n", codeLines),
+                            FontFamily = new FontFamily("Consolas"),
+                            FontSize = 10,
+                            Foreground = new SolidColorBrush(Color.FromRgb(186, 194, 222)),
+                            TextWrapping = TextWrapping.Wrap
+                        };
+                        codeBorder.Child = codeText;
+                        stack.Children.Add(codeBorder);
+                        codeLines.Clear();
+                    }
+                    continue;
+                }
+
+                if (inCodeBlock)
+                {
+                    codeLines.Add(line);
+                    continue;
+                }
+
+
+                var htmlMatch = htmlImgRegex.Match(line);
+                var mdMatch = mdImgRegex.Match(line);
+
+                if (htmlMatch.Success)
+                {
+                    FlushPendingText(pendingCenter);
+                    pendingCenter = false;
+
+                    // Sprawdź czy <img> ma align="center" lub jest wewnątrz tagu z center
+                    bool imgCentered = alignCenterRegex.IsMatch(line);
+                    var img = BuildCardImage(htmlMatch.Groups[1].Value, noteFolder, cardWidth);
+                    if (img != null)
+                    {
+                        img.HorizontalAlignment = imgCentered
+                            ? HorizontalAlignment.Center
+                            : HorizontalAlignment.Left;
+                        stack.Children.Add(img);
+                    }
+
+                    string rest = htmlTagRegex.Replace(line, "").Trim();
+                    if (!string.IsNullOrWhiteSpace(rest))
+                        pendingLines.Add(rest);
+                }
+                else if (mdMatch.Success)
+                {
+                    FlushPendingText(pendingCenter);
+                    pendingCenter = false;
+
+                    var img = BuildCardImage(mdMatch.Groups[1].Value, noteFolder, cardWidth);
+                    if (img != null) stack.Children.Add(img);
+
+                    string rest = mdImgRegex.Replace(line, "").Trim();
+                    if (!string.IsNullOrWhiteSpace(rest))
+                        pendingLines.Add(rest);
+                }
+                else if (line == "---" || line == "***" || line == "___")
+                {
+                    FlushPendingText(pendingCenter);
+                    var separator = new Border
+                    {
+                        BorderBrush = new SolidColorBrush(Color.FromRgb(49, 50, 68)),
+                        BorderThickness = new Thickness(0, 1, 0, 0),
+                        Margin = new Thickness(0, 4, 0, 4),
+                        HorizontalAlignment = HorizontalAlignment.Stretch
+                    };
+                    stack.Children.Add(separator);
+                }
+                else
+                {
+                    // Sprawdź czy linia zawiera tag z align="center"
+                    bool hasTag = htmlTagRegex.IsMatch(line);
+                    if (hasTag && alignCenterRegex.IsMatch(line))
+                    {
+                        // Flush poprzedniego tekstu bez centrowania
+                        FlushPendingText(pendingCenter);
+                        pendingCenter = true;
+                    }
+                    else if (hasTag && line.TrimStart().StartsWith("</"))
+                    {
+                        // Tag zamykający — flush z aktualnym center i reset
+                        string cleaned = htmlTagRegex.Replace(line, "").Trim();
+                        if (!string.IsNullOrWhiteSpace(cleaned))
+                            pendingLines.Add(cleaned);
+                        FlushPendingText(pendingCenter);
+                        pendingCenter = false;
+                        continue;
+                    }
+
+                    string cleanedLine = htmlTagRegex.Replace(line, "").Trim();
+                    pendingLines.Add(cleanedLine);
+                }
+            }
+
+            FlushPendingText(pendingCenter);
+            return stack;
+        }
+
+        private FrameworkElement? BuildCardImage(string src, string? noteFolder, double cardWidth)
+        {
+            try
+            {
+                Uri uri;
+                if (Uri.IsWellFormedUriString(src, UriKind.Absolute))
+                {
+                    uri = new Uri(src, UriKind.Absolute);
+                }
+                else if (noteFolder != null)
+                {
+                    string fullImgPath = Path.GetFullPath(Path.Combine(noteFolder, src));
+                    if (!File.Exists(fullImgPath)) return null;
+                    uri = new Uri(fullImgPath, UriKind.Absolute);
+                }
+                else return null;
+
+                var bitmap = new System.Windows.Media.Imaging.BitmapImage();
+                bitmap.BeginInit();
+                bitmap.UriSource = uri;
+                bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                bitmap.EndInit();
+
+                double imgW = bitmap.PixelWidth;
+                double availableW = cardWidth - 20; // margines 10px z każdej strony
+
+                double renderWidth;
+                if (imgW > availableW && ScaleImagesDown)
+                    renderWidth = availableW;
+                else if (imgW < availableW && ScaleImagesUp)
+                    renderWidth = availableW;
+                else
+                    renderWidth = imgW;
+
+                return new System.Windows.Controls.Image
+                {
+                    Source = bitmap,
+                    Width = renderWidth,
+                    Stretch = System.Windows.Media.Stretch.Uniform,
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Margin = new Thickness(0, 0, 0, 4)
+                };
+            }
+            catch { return null; }
+        }
         private static TextBlock BuildPreviewTextBlock(
     string text,
     double maxHeight,
@@ -669,7 +875,7 @@ namespace Apex.Views
                 MaxHeight = maxHeight,
                 Margin = new Thickness(0, 4, 0, 0),
                 VerticalAlignment = VerticalAlignment.Top,
-                LineHeight = 16,          // stały odstęp — eliminuje "skoki" między liniami
+                LineHeight = 16,
                 LineStackingStrategy = LineStackingStrategy.BlockLineHeight
             };
 
@@ -684,7 +890,6 @@ namespace Apex.Views
                     tb.Inlines.Add(new System.Windows.Documents.LineBreak());
                 firstLine = false;
 
-                // Nagłówek (#, ##, ###)
                 var headingMatch = System.Text.RegularExpressions.Regex.Match(line, @"^(#{1,3})\s+(.*)");
                 if (headingMatch.Success)
                 {
@@ -698,15 +903,15 @@ namespace Apex.Views
                     continue;
                 }
 
-                // Pusta linia — mały spacer zamiast pełnej przerwy
+               
+
                 if (string.IsNullOrWhiteSpace(line))
                 {
                     tb.Inlines.Add(new System.Windows.Documents.Run(" "));
                     continue;
                 }
 
-                // Linia z bold/italic — parsuj inline
-                AddInlineFormattedRuns(tb.Inlines, line, onLinkClicked, linkExists);  // ← dodaj linkExists
+                AddInlineFormattedRuns(tb.Inlines, line, onLinkClicked, linkExists);
             }
 
             return tb;
@@ -998,6 +1203,20 @@ namespace Apex.Views
             };
             catItem.Items.Add(noCatItem);
             menu.Items.Add(catItem);
+
+            var openExternalItem = new MenuItem { Header = "Open in system editor" };
+            openExternalItem.Click += (_, _) =>
+            {
+                string fullPath = FileService.GetFullPath(Project!.RootFolder, card.RelativePath);
+                if (File.Exists(fullPath))
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = fullPath,
+                        UseShellExecute = true
+                    });
+            };
+            menu.Items.Add(openExternalItem);
+
 
             var deleteItem = new MenuItem { Header = "Delete" };
             deleteItem.Click += (_, _) =>

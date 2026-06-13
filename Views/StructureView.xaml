@@ -87,6 +87,7 @@
                         <MenuItem x:Name="CtxNewSubfolder" Header="New subfolder" Click="CtxNewSubfolder_Click" />
                         <Separator x:Name="CtxSep1" />
                         <MenuItem x:Name="CtxRename" Header="Rename" Click="CtxRename_Click" />
+                        <MenuItem x:Name="CtxOpenExternal" Header="Open in system editor" Click="CtxOpenExternal_Click" />
                         <MenuItem x:Name="CtxDelete" Header="Delete" Click="CtxDelete_Click" />
                     </ContextMenu>
                 </Border.ContextMenu>
@@ -162,7 +163,51 @@
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0" Background="#11111B" Padding="8,6">
-            <TextBlock Text="FILES" FontSize="11" FontWeight="SemiBold" Foreground="#6C7086" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="FILES" FontSize="11" 
+                   FontWeight="SemiBold" Foreground="#6C7086" 
+                   VerticalAlignment="Center"/>
+                <Button x:Name="OpenFolderButton" Grid.Column="1"
+                BorderThickness="0"
+                Cursor="Hand" ToolTip="Open project folder"
+                Click="OpenFolderButton_Click"
+                Width="24" Height="24">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <!-- 1. Domyślny stan jest przezroczysty -->
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <!-- 2. Border, który renderuje tło i daje lekkie zaokrąglenie rogów -->
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+
+                                        <!-- 3. Nadpisanie systemowego hovera -->
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <!-- Tutaj wpisz swój wymarzony kolor po najechaniu myszką -->
+                                                <Setter Property="Background" Value="#222230"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Button.Style>
+
+                    <TextBlock Text="📁" FontSize="14" 
+                       FontFamily="Segoe UI Emoji"
+                       VerticalAlignment="Center"
+                       Foreground="#707064"
+                       HorizontalAlignment="Center"/>
+                </Button>
+            </Grid>
         </Border>
 
         <TreeView x:Name="FileTree"

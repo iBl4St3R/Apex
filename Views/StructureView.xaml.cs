@@ -564,6 +564,41 @@ namespace Apex.Views
         // ──────────────────────────────────────────────
         //  Utility
         // ──────────────────────────────────────────────
+        private void OpenFolderButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrEmpty(_project.RootFolder) ||
+                !Directory.Exists(_project.RootFolder))
+                return;
+
+            // Sprawdź czy Explorer już ma otwarty ten folder
+            var processes = System.Diagnostics.Process.GetProcessesByName("explorer");
+            foreach (var proc in processes)
+            {
+                // Spróbuj wysunąć istniejące okno na wierzch przez shell
+                // Explorer nie udostępnia łatwo który folder ma otwarty,
+                // więc po prostu otwieramy — Windows sam wykryje duplikat i wysunie
+            }
+
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = _project.RootFolder,
+                UseShellExecute = true
+            });
+        }
+
+        private void CtxOpenExternal_Click(object sender, RoutedEventArgs e)
+        {
+            var item = GetContextItem(sender);
+            if (item == null || item.IsFolder) return;
+
+            string fullPath = FileService.GetFullPath(_project.RootFolder, item.RelativePath);
+            if (File.Exists(fullPath))
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = fullPath,
+                    UseShellExecute = true
+                });
+        }
 
         private static T? FindAncestor<T>(DependencyObject? child) where T : DependencyObject
         {
