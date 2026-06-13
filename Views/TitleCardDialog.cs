@@ -13,12 +13,16 @@ public class TitleCardDialog : Window
     private readonly TextBlock _fontSizeLabel;
     private readonly TextBlock _previewText;
     private readonly Border _previewBox;
+        private readonly CheckBox _boldCheck;
+        private readonly CheckBox _italicCheck;
 
     public string ResultText { get; private set; } = "";
     public string ResultFontFamily { get; private set; } = "Segoe UI";
     public double ResultFontSize { get; private set; } = 32;
     public string ResultFontColor { get; private set; } = "#CDD6F4";
     public string ResultBackgroundColor { get; private set; } = "#00000000";
+    public bool ResultBold { get; private set; }
+    public bool ResultItalic { get; private set; }
 
     private string _selectedFgColor = "#CDD6F4";
     private string _selectedBgColor = "#00000000";
@@ -206,7 +210,35 @@ public class TitleCardDialog : Window
         };
         _fontSizeLabel.Text = ((int)_fontSizeSlider.Value) + "px";
         sizeStack.Children.Add(_fontSizeSlider);
-        Grid.SetColumn(sizeStack, 2);
+        var styleRow = new StackPanel
+{
+    Orientation = Orientation.Horizontal,
+    Margin = new Thickness(0, 6, 0, 0)
+};
+
+_boldCheck = new CheckBox
+{
+    Content = "Bold",
+    Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244)),
+    Margin = new Thickness(0, 0, 12, 0),
+    IsChecked = false
+};
+_boldCheck.Checked += (_, _) => UpdatePreview();
+_boldCheck.Unchecked += (_, _) => UpdatePreview();
+
+_italicCheck = new CheckBox
+{
+    Content = "Italic",
+    Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244)),
+    IsChecked = false
+};
+_italicCheck.Checked += (_, _) => UpdatePreview();
+_italicCheck.Unchecked += (_, _) => UpdatePreview();
+
+styleRow.Children.Add(_boldCheck);
+styleRow.Children.Add(_italicCheck);
+sizeStack.Children.Add(styleRow);
+Grid.SetColumn(sizeStack, 2);
         fontRow.Children.Add(sizeStack);
         root.Children.Add(fontRow);
 
@@ -445,6 +477,8 @@ public class TitleCardDialog : Window
         _previewText.FontSize = Math.Clamp(fs, 10, 64);
 
         // Colors — exactly what will appear on the card
+        _previewText.FontWeight = _boldCheck?.IsChecked == true ? FontWeights.Bold : FontWeights.Normal;
+        _previewText.FontStyle = _italicCheck?.IsChecked == true ? FontStyles.Italic : FontStyles.Normal;
         _previewText.Foreground = ParseHexBrush(_selectedFgColor);
 
         bool transparent = string.Equals(_selectedBgColor, "#00000000", StringComparison.OrdinalIgnoreCase);
