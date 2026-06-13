@@ -33,6 +33,9 @@ public class ApexProject
     [JsonPropertyName("imageCards")]
     public List<ImageCard> ImageCards { get; set; } = new();
 
+    [JsonPropertyName("titleCards")]
+    public List<TitleCard> TitleCards { get; set; } = new();
+
     public ApexProject() { }
 
     public ApexProject(string projectName, string rootFolder)

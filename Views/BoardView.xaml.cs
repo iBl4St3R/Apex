@@ -264,6 +264,15 @@ namespace Apex.Views
                 Canvas.SetTop(element, imageCard.BoardY);
             }
 
+            // TitleCards
+            foreach (var titleCard in Project.TitleCards)
+            {
+                var element = CreateTitleCardElement(titleCard);
+                BoardCanvas.Children.Add(element);
+                Canvas.SetLeft(element, titleCard.BoardX);
+                Canvas.SetTop(element, titleCard.BoardY);
+            }
+
             // Linie rysuj po kartach żeby mieć ActualWidth (defer do layout pass)
             Dispatcher.BeginInvoke(new Action(RenderConnections),
                 System.Windows.Threading.DispatcherPriority.Loaded);
@@ -633,6 +642,12 @@ namespace Apex.Views
                     imgCard.CustomHeight = _resizeElement.Height;
                     ReplaceImageCardElement(imgCard, _resizeElement);
                 }
+                else if (_resizeElement.Tag is TitleCard titleCard)
+                {
+                    titleCard.CustomWidth = _resizeElement.Width;
+                    titleCard.CustomHeight = _resizeElement.Height;
+                    ReplaceTitleCardElement(titleCard, _resizeElement);
+                }
 
                 if (Project != null) FileService.SaveProject(Project);
 
@@ -662,6 +677,11 @@ namespace Apex.Views
                     {
                         imgCard.BoardX = newX;
                         imgCard.BoardY = newY;
+                    }
+                    else if (_dragElement.Tag is TitleCard titleCard)
+                    {
+                        titleCard.BoardX = newX;
+                        titleCard.BoardY = newY;
                     }
 
                     if (Project != null) FileService.SaveProject(Project);
@@ -1093,6 +1113,7 @@ namespace Apex.Views
             // Sprawdź locked dla obu typów
             if (border.Tag is NoteCard nc && nc.Locked) return;
             if (border.Tag is ImageCard ic && ic.Locked) return;
+            if (border.Tag is TitleCard tc && tc.Locked) return;
 
             Point local = e.GetPosition(border);
             var edge = GetResizeEdge(border, local);
@@ -1490,6 +1511,152 @@ namespace Apex.Views
             }
         }
 
+        private Border CreateTitleCardElement(TitleCard titleCard)
+        {
+            var bg = ParseHexBrush(titleCard.BackgroundColor);
+
+            double w = titleCard.CustomWidth ?? 300;
+            double h = titleCard.CustomHeight ?? 80;
+
+            var cardBorder = new Border
+            {
+                Width = w,
+                Height = h,
+                Background = bg,
+                BorderBrush = titleCard.Locked
+                    ? new SolidColorBrush(Color.FromRgb(98, 79, 120))
+                    : new SolidColorBrush(Color.FromRgb(69, 71, 90)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Cursor = titleCard.Locked ? Cursors.Arrow : Cursors.Hand,
+                Tag = titleCard,
+                Focusable = false,
+                ClipToBounds = true
+            };
+
+            var grid = new Grid();
+
+            var textBlock = new TextBlock
+            {
+                Text = titleCard.Text,
+                FontFamily = new FontFamily(titleCard.FontFamily),
+                FontSize = titleCard.FontSize,
+                Foreground = ParseHexBrush(titleCard.FontColor),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                Padding = new Thickness(12, 8, 12, 8)
+            };
+            grid.Children.Add(textBlock);
+
+            // Kłódka w rogu
+            var lockIcon = new TextBlock
+            {
+                Text = titleCard.Locked ? "🔒" : "🔓",
+                FontSize = 11,
+                Cursor = Cursors.Hand,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 6, 4),
+                ToolTip = titleCard.Locked ? "Unlock" : "Lock"
+            };
+            lockIcon.MouseLeftButtonDown += (_, e) => e.Handled = true;
+            lockIcon.MouseLeftButtonUp += (_, e) =>
+            {
+                titleCard.Locked = !titleCard.Locked;
+                var current = BoardCanvas.Children.OfType<Border>()
+                    .FirstOrDefault(b => b.Tag == titleCard);
+                if (current != null) ReplaceTitleCardElement(titleCard, current);
+                if (Project != null) FileService.SaveProject(Project);
+                e.Handled = true;
+            };
+            grid.Children.Add(lockIcon);
+
+            cardBorder.Child = grid;
+
+            cardBorder.MouseLeftButtonDown += TitleCard_MouseLeftButtonDown;
+            cardBorder.MouseMove += Card_MouseMove;
+            cardBorder.MouseLeftButtonUp += Card_MouseLeftButtonUp;
+            cardBorder.MouseLeave += Card_ResizeMouseLeave;
+            cardBorder.ContextMenu = BuildTitleCardContextMenu(titleCard, cardBorder);
+
+            return cardBorder;
+        }
+
+        private void ReplaceTitleCardElement(TitleCard titleCard, Border oldElement)
+        {
+            int idx = BoardCanvas.Children.IndexOf(oldElement);
+            if (idx >= 0)
+            {
+                var newElement = CreateTitleCardElement(titleCard);
+                Canvas.SetLeft(newElement, titleCard.BoardX);
+                Canvas.SetTop(newElement, titleCard.BoardY);
+                BoardCanvas.Children.RemoveAt(idx);
+                BoardCanvas.Children.Insert(idx, newElement);
+            }
+        }
+
+        private ContextMenu BuildTitleCardContextMenu(TitleCard titleCard, Border cardElement)
+        {
+            var menu = new ContextMenu();
+
+            var editItem = new MenuItem { Header = "Edit" };
+            editItem.Click += (_, _) =>
+            {
+                var dialog = new TitleCardDialog(
+                    titleCard.Text, titleCard.FontFamily,
+                    titleCard.FontSize, titleCard.FontColor, titleCard.BackgroundColor);
+                dialog.Owner = Window.GetWindow(this);
+                if (dialog.ShowDialog() == true)
+                {
+                    titleCard.Text = dialog.ResultText;
+                    titleCard.FontFamily = dialog.ResultFontFamily;
+                    titleCard.FontSize = dialog.ResultFontSize;
+                    titleCard.FontColor = dialog.ResultFontColor;
+                    titleCard.BackgroundColor = dialog.ResultBackgroundColor;
+                    ReplaceTitleCardElement(titleCard, cardElement);
+                    if (Project != null) FileService.SaveProject(Project);
+                }
+            };
+            menu.Items.Add(editItem);
+
+            var deleteItem = new MenuItem { Header = "Delete" };
+            deleteItem.Click += (_, _) =>
+            {
+                Project?.TitleCards.Remove(titleCard);
+                BoardCanvas.Children.Remove(cardElement);
+                if (Project != null) FileService.SaveProject(Project);
+            };
+            menu.Items.Add(deleteItem);
+
+            return menu;
+        }
+
+        private void TitleCard_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Border border && border.Tag is TitleCard titleCard)
+            {
+                if (titleCard.Locked) return;
+
+                Point local = e.GetPosition(border);
+                if (GetResizeEdge(border, local) != ResizeEdge.None)
+                {
+                    Card_ResizeMouseLeftButtonDown(sender, e);
+                    return;
+                }
+
+                _isDraggingCard = true;
+                _dragElement = border;
+                _dragCard = null;
+                _dragStartMouse = e.GetPosition(BoardCanvas);
+                _dragStartLeft = Canvas.GetLeft(border);
+                _dragStartTop = Canvas.GetTop(border);
+                _didDrag = false;
+                border.CaptureMouse();
+                e.Handled = true;
+            }
+        }
+
         private ContextMenu BuildImageCardContextMenu(ImageCard imageCard, Border cardElement)
         {
             var menu = new ContextMenu();
@@ -1620,7 +1787,8 @@ namespace Apex.Views
 
         private bool IsClickOnCard(DependencyObject? source)
         {
-            return FindAncestor<Border>(source, b => b.Tag is NoteCard || b.Tag is ImageCard) != null;
+            return FindAncestor<Border>(source,
+            b => b.Tag is NoteCard || b.Tag is ImageCard || b.Tag is TitleCard) != null;
         }
 
         private void StartPan(MouseEventArgs e)
@@ -1709,7 +1877,8 @@ namespace Apex.Views
         // ── Right-click context menu — new card at correct position ──
         private void CanvasTransformHost_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
         {
-            if (FindAncestor<Border>(e.OriginalSource as DependencyObject, b => b.Tag is NoteCard || b.Tag is ImageCard) != null)
+            if (FindAncestor<Border>(e.OriginalSource as DependencyObject,
+                b => b.Tag is NoteCard || b.Tag is ImageCard || b.Tag is TitleCard) != null)
                 return;
 
             var menu = new ContextMenu();
@@ -1728,6 +1897,10 @@ namespace Apex.Views
             var newImageItem = new MenuItem { Header = "New image" };
             newImageItem.Click += (_, _) => CreateNewImageAt(canvasPos);
             menu.Items.Add(newImageItem);
+
+            var newTitleItem = new MenuItem { Header = "New title" };
+            newTitleItem.Click += (_, _) => CreateNewTitleAt(canvasPos);
+            menu.Items.Add(newTitleItem);
 
             var resetViewItem = new MenuItem { Header = "Reset view" };
             resetViewItem.Click += (_, _) => FitAllCards();
@@ -1854,6 +2027,33 @@ namespace Apex.Views
             Project.ImageCards.Add(imageCard);
 
             var element = CreateImageCardElement(imageCard);
+            Canvas.SetLeft(element, position.X);
+            Canvas.SetTop(element, position.Y);
+            BoardCanvas.Children.Add(element);
+
+            FileService.SaveProject(Project);
+        }
+
+        private void CreateNewTitleAt(Point position)
+        {
+            if (Project == null) return;
+
+            var dialog = new TitleCardDialog();
+            dialog.Owner = Window.GetWindow(this);
+            if (dialog.ShowDialog() != true) return;
+
+            string id = Guid.NewGuid().ToString("N")[..8];
+            var titleCard = new TitleCard(id, dialog.ResultText, position.X, position.Y)
+            {
+                FontFamily = dialog.ResultFontFamily,
+                FontSize = dialog.ResultFontSize,
+                FontColor = dialog.ResultFontColor,
+                BackgroundColor = dialog.ResultBackgroundColor
+            };
+
+            Project.TitleCards.Add(titleCard);
+
+            var element = CreateTitleCardElement(titleCard);
             Canvas.SetLeft(element, position.X);
             Canvas.SetTop(element, position.Y);
             BoardCanvas.Children.Add(element);
