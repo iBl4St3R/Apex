@@ -73,6 +73,8 @@ namespace Apex.Views
         // ── Image scaling settings (future: connect to Settings panel) ──
         public static bool ScaleImagesDown = true;  // skaluj w dół jeśli szersze niż karta
         public static bool ScaleImagesUp = true;    // skaluj w górę jeśli węższe niż karta
+        public static bool ScaleImageCardsDown = true;
+        public static bool ScaleImageCardsUp = false;  // domyślnie nie rozciągamy w górę
 
         public BoardView()
         {
@@ -251,6 +253,15 @@ namespace Apex.Views
                 BoardCanvas.Children.Add(element);
                 Canvas.SetLeft(element, card.BoardX);
                 Canvas.SetTop(element, card.BoardY);
+            }
+
+            // ImageCards
+            foreach (var imageCard in Project.ImageCards)
+            {
+                var element = CreateImageCardElement(imageCard);
+                BoardCanvas.Children.Add(element);
+                Canvas.SetLeft(element, imageCard.BoardX);
+                Canvas.SetTop(element, imageCard.BoardY);
             }
 
             // Linie rysuj po kartach żeby mieć ActualWidth (defer do layout pass)
@@ -552,7 +563,7 @@ namespace Apex.Views
         private void Card_MouseMove(object sender, MouseEventArgs e)
         {
             // Resize ma pierwszeństwo
-            if (_isResizing && _resizeElement != null && _resizeCard != null
+            if (_isResizing && _resizeElement != null
                 && e.LeftButton == MouseButtonState.Pressed)
             {
                 Point current = e.GetPosition(BoardCanvas);
@@ -578,7 +589,7 @@ namespace Apex.Views
                 Card_ResizeMouseMove(sender, e);
 
             // Normalny drag
-            if (_isDraggingCard && _dragElement != null && _dragCard != null
+            if (_isDraggingCard && _dragElement != null
                 && e.LeftButton == MouseButtonState.Pressed)
             {
                 Point current = e.GetPosition(BoardCanvas);
@@ -606,19 +617,24 @@ namespace Apex.Views
         private void Card_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
             // Zakończ resize
-            if (_isResizing && _resizeElement != null && _resizeCard != null)
+            if (_isResizing && _resizeElement != null)
             {
                 _resizeElement.ReleaseMouseCapture();
 
-                // Zapisz wymiary do modelu
-                _resizeCard.CustomWidth = _resizeElement.Width;
-                _resizeCard.CustomHeight = _resizeElement.Height;
+                if (_resizeCard != null)
+                {
+                    _resizeCard.CustomWidth = _resizeElement.Width;
+                    _resizeCard.CustomHeight = _resizeElement.Height;
+                    ReplaceCardElement(_resizeCard, _resizeElement);
+                }
+                else if (_resizeElement.Tag is ImageCard imgCard)
+                {
+                    imgCard.CustomWidth = _resizeElement.Width;
+                    imgCard.CustomHeight = _resizeElement.Height;
+                    ReplaceImageCardElement(imgCard, _resizeElement);
+                }
 
-                // Przebuduj kartę z nowymi wymiarami → przelicza previewMaxChars
-                ReplaceCardElement(_resizeCard, _resizeElement);  // ← dodaj tu
-
-                if (Project != null)
-                    FileService.SaveProject(Project);
+                if (Project != null) FileService.SaveProject(Project);
 
                 _isResizing = false;
                 _resizeElement = null;
@@ -628,20 +644,33 @@ namespace Apex.Views
             }
 
             // Normalny drag end
-            if (_isDraggingCard && _dragElement != null && _dragCard != null)
+            if (_isDraggingCard && _dragElement != null)
             {
                 _dragElement.ReleaseMouseCapture();
 
                 if (_didDrag)
                 {
-                    _dragCard.BoardX = Canvas.GetLeft(_dragElement);
-                    _dragCard.BoardY = Canvas.GetTop(_dragElement);
-                    if (Project != null)
-                        FileService.SaveProject(Project);
+                    double newX = Canvas.GetLeft(_dragElement);
+                    double newY = Canvas.GetTop(_dragElement);
+
+                    if (_dragCard != null)
+                    {
+                        _dragCard.BoardX = newX;
+                        _dragCard.BoardY = newY;
+                    }
+                    else if (_dragElement.Tag is ImageCard imgCard)
+                    {
+                        imgCard.BoardX = newX;
+                        imgCard.BoardY = newY;
+                    }
+
+                    if (Project != null) FileService.SaveProject(Project);
                 }
                 else
                 {
-                    CardSelected?.Invoke(_dragCard);
+                    if (_dragCard != null)
+                        CardSelected?.Invoke(_dragCard);
+                    // ImageCard — klik bez drag nie robi nic
                 }
 
                 _isDraggingCard = false;
@@ -1059,23 +1088,26 @@ namespace Apex.Views
 
         private void Card_ResizeMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            if (sender is not Border border || border.Tag is not NoteCard card) return;
-            if (card.Locked) return;   // ← dodaj
+            if (sender is not Border border) return;
+
+            // Sprawdź locked dla obu typów
+            if (border.Tag is NoteCard nc && nc.Locked) return;
+            if (border.Tag is ImageCard ic && ic.Locked) return;
+
             Point local = e.GetPosition(border);
             var edge = GetResizeEdge(border, local);
             if (edge == ResizeEdge.None) return;
 
-            // Rozpocznij resize zamiast drag
             _isResizing = true;
             _resizeElement = border;
-            _resizeCard = card;
+            _resizeCard = border.Tag is NoteCard noteCard ? noteCard : null;
             _resizeEdge = edge;
             _resizeStartMouse = e.GetPosition(BoardCanvas);
             _resizeStartWidth = border.ActualWidth;
             _resizeStartHeight = border.ActualHeight;
 
             border.CaptureMouse();
-            e.Handled = true; // zapobiega uruchomieniu Card_MouseLeftButtonDown
+            e.Handled = true;
         }
 
 
@@ -1265,6 +1297,276 @@ namespace Apex.Views
             }
         }
 
+        private Border CreateImageCardElement(ImageCard imageCard)
+        {
+            string fullPath = Project != null
+                ? FileService.GetFullPath(Project.RootFolder, imageCard.RelativePath)
+                : string.Empty;
+
+            double defaultWidth = imageCard.CustomWidth ?? 300;
+            double defaultHeight = imageCard.CustomHeight ?? 200;
+
+            var cardBorder = new Border
+            {
+                Width = defaultWidth,
+                Height = defaultHeight,
+                ClipToBounds = true,
+                Background = new SolidColorBrush(Color.FromRgb(24, 24, 37)),
+                BorderBrush = imageCard.Locked
+                    ? new SolidColorBrush(Color.FromRgb(98, 79, 120))
+                    : new SolidColorBrush(Color.FromRgb(49, 50, 68)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Cursor = imageCard.Locked ? Cursors.Arrow : Cursors.Hand,
+                Tag = imageCard,
+                Focusable = false
+            };
+
+            cardBorder.SizeChanged += (_, args) =>
+            {
+                cardBorder.Clip = new System.Windows.Media.RectangleGeometry
+                {
+                    RadiusX = 8,
+                    RadiusY = 8,
+                    Rect = new Rect(0, 0, args.NewSize.Width, args.NewSize.Height)
+                };
+            };
+
+            var rootGrid = new Grid();
+
+            // Obraz jako tło
+            if (File.Exists(fullPath))
+            {
+                try
+                {
+                    var bitmap = new System.Windows.Media.Imaging.BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.UriSource = new Uri(fullPath, UriKind.Absolute);
+                    bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                    bitmap.EndInit();
+
+                    double imgW = bitmap.PixelWidth;
+                    double renderWidth = defaultWidth;
+
+                    if (imgW > defaultWidth && ScaleImageCardsDown)
+                        renderWidth = defaultWidth;
+                    else if (imgW < defaultWidth && ScaleImageCardsUp)
+                        renderWidth = defaultWidth;
+                    else
+                        renderWidth = imgW;
+
+                    var image = new System.Windows.Controls.Image
+                    {
+                        Source = bitmap,
+                        Width = renderWidth,
+                        Stretch = System.Windows.Media.Stretch.Uniform,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    rootGrid.Children.Add(image);
+                }
+                catch { }
+            }
+
+            // Overlay — kategoria (góra-prawo) i kłódka+data (dół-prawo)
+            var overlay = new Grid();
+
+            // Kategoria badge
+            string? catColor = null;
+            string? catName = null;
+            if (!string.IsNullOrEmpty(imageCard.CategoryId) && Project != null)
+            {
+                var cat = Project.Categories.FirstOrDefault(c => c.Id == imageCard.CategoryId);
+                if (cat != null) { catColor = cat.Color; catName = cat.Name; }
+            }
+
+            if (catName != null)
+            {
+                var catBadge = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromArgb(180,
+                        Convert.ToByte(catColor!.TrimStart('#')[..2], 16),
+                        Convert.ToByte(catColor.TrimStart('#')[2..4], 16),
+                        Convert.ToByte(catColor.TrimStart('#')[4..6], 16))),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 2, 6, 2),
+                    Margin = new Thickness(0, 6, 6, 0),
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    VerticalAlignment = VerticalAlignment.Top,
+                    Child = new TextBlock
+                    {
+                        Text = catName,
+                        FontSize = 11,
+                        Foreground = Brushes.White,
+                        FontWeight = FontWeights.SemiBold
+                    }
+                };
+                overlay.Children.Add(catBadge);
+            }
+
+            // Dół-prawo: kłódka + data
+            string modifiedDateTime = "";
+            if (File.Exists(fullPath))
+            {
+                try { modifiedDateTime = new FileInfo(fullPath).LastWriteTime.ToString("yyyy-MM-dd"); }
+                catch { }
+            }
+
+            var bottomPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 6, 6)
+            };
+
+            var bottomBg = new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb(160, 17, 17, 27)),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 2, 6, 2),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 6, 6)
+            };
+
+            var bottomContent = new StackPanel { Orientation = Orientation.Horizontal };
+
+            var lockIcon = new TextBlock
+            {
+                Text = imageCard.Locked ? "🔒" : "🔓",
+                FontSize = 11,
+                Cursor = Cursors.Hand,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 4, 0),
+                ToolTip = imageCard.Locked ? "Unlock" : "Lock"
+            };
+            lockIcon.MouseLeftButtonDown += (_, e) => e.Handled = true;
+            lockIcon.MouseLeftButtonUp += (_, e) =>
+            {
+                imageCard.Locked = !imageCard.Locked;
+                var current = BoardCanvas.Children.OfType<Border>()
+                    .FirstOrDefault(b => b.Tag == imageCard);
+                if (current != null) ReplaceImageCardElement(imageCard, current);
+                if (Project != null) FileService.SaveProject(Project);
+                e.Handled = true;
+            };
+            bottomContent.Children.Add(lockIcon);
+
+            if (!string.IsNullOrEmpty(modifiedDateTime))
+                bottomContent.Children.Add(new TextBlock
+                {
+                    Text = modifiedDateTime,
+                    FontSize = 10,
+                    Foreground = new SolidColorBrush(Color.FromRgb(166, 173, 200)),
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+
+            bottomBg.Child = bottomContent;
+            overlay.Children.Add(bottomBg);
+            rootGrid.Children.Add(overlay);
+            cardBorder.Child = rootGrid;
+
+            // Events — drag, resize, context menu
+            cardBorder.MouseLeftButtonDown += ImageCard_MouseLeftButtonDown;
+            cardBorder.MouseMove += Card_MouseMove;
+            cardBorder.MouseLeftButtonUp += Card_MouseLeftButtonUp;
+            cardBorder.MouseLeave += Card_ResizeMouseLeave;
+            cardBorder.ContextMenu = BuildImageCardContextMenu(imageCard, cardBorder);
+
+            return cardBorder;
+        }
+
+        private void ReplaceImageCardElement(ImageCard imageCard, Border oldElement)
+        {
+            int idx = BoardCanvas.Children.IndexOf(oldElement);
+            if (idx >= 0)
+            {
+                var newElement = CreateImageCardElement(imageCard);
+                Canvas.SetLeft(newElement, imageCard.BoardX);
+                Canvas.SetTop(newElement, imageCard.BoardY);
+                BoardCanvas.Children.RemoveAt(idx);
+                BoardCanvas.Children.Insert(idx, newElement);
+            }
+        }
+
+        private ContextMenu BuildImageCardContextMenu(ImageCard imageCard, Border cardElement)
+        {
+            var menu = new ContextMenu();
+
+            var catItem = new MenuItem { Header = "Set category" };
+            if (Project != null)
+            {
+                foreach (var cat in Project.Categories)
+                {
+                    var subItem = new MenuItem
+                    {
+                        Header = cat.Name,
+                        IsChecked = string.Equals(imageCard.CategoryId, cat.Id, StringComparison.OrdinalIgnoreCase)
+                    };
+                    subItem.Click += (_, _) =>
+                    {
+                        imageCard.CategoryId = cat.Id;
+                        ReplaceImageCardElement(imageCard, cardElement);
+                        FileService.SaveProject(Project!);
+                    };
+                    catItem.Items.Add(subItem);
+                }
+            }
+            var noCatItem = new MenuItem { Header = "(None)" };
+            noCatItem.Click += (_, _) =>
+            {
+                imageCard.CategoryId = null;
+                ReplaceImageCardElement(imageCard, cardElement);
+                FileService.SaveProject(Project!);
+            };
+            catItem.Items.Add(noCatItem);
+            menu.Items.Add(catItem);
+
+            var deleteItem = new MenuItem { Header = "Delete" };
+            deleteItem.Click += (_, _) =>
+            {
+                var result = System.Windows.MessageBox.Show(
+                    "Remove this image from the board?\n(File will NOT be deleted from disk.)",
+                    "Remove Image",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+                if (result == MessageBoxResult.Yes)
+                {
+                    Project?.ImageCards.Remove(imageCard);
+                    BoardCanvas.Children.Remove(cardElement);
+                    if (Project != null) FileService.SaveProject(Project);
+                }
+            };
+            menu.Items.Add(deleteItem);
+            return menu;
+        }
+
+        private void ImageCard_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Border border && border.Tag is ImageCard imageCard)
+            {
+                if (imageCard.Locked) return;
+
+                Point local = e.GetPosition(border);
+                if (GetResizeEdge(border, local) != ResizeEdge.None)
+                {
+                    Card_ResizeMouseLeftButtonDown(sender, e);
+                    return;
+                }
+
+                _isDraggingCard = true;
+                _dragElement = border;
+                _dragCard = null; // ImageCard nie jest NoteCard
+                _dragStartMouse = e.GetPosition(BoardCanvas);
+                _dragStartLeft = Canvas.GetLeft(border);
+                _dragStartTop = Canvas.GetTop(border);
+                _didDrag = false;
+                border.CaptureMouse();
+                e.Handled = true;
+            }
+        }
+
         // ──────────────────────────────────────────────
         //  Pan — left or middle mouse on empty background
         //  Handled at UserControl level to intercept before
@@ -1318,7 +1620,7 @@ namespace Apex.Views
 
         private bool IsClickOnCard(DependencyObject? source)
         {
-            return FindAncestor<Border>(source, b => b.Tag is NoteCard) != null;
+            return FindAncestor<Border>(source, b => b.Tag is NoteCard || b.Tag is ImageCard) != null;
         }
 
         private void StartPan(MouseEventArgs e)
@@ -1407,7 +1709,7 @@ namespace Apex.Views
         // ── Right-click context menu — new card at correct position ──
         private void CanvasTransformHost_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
         {
-            if (FindAncestor<Border>(e.OriginalSource as DependencyObject, b => b.Tag is NoteCard) != null)
+            if (FindAncestor<Border>(e.OriginalSource as DependencyObject, b => b.Tag is NoteCard || b.Tag is ImageCard) != null)
                 return;
 
             var menu = new ContextMenu();
@@ -1422,6 +1724,10 @@ namespace Apex.Views
             var newCardItem = new MenuItem { Header = "New card" };
             newCardItem.Click += (_, _) => CreateNewNoteAt(canvasPos);
             menu.Items.Add(newCardItem);
+
+            var newImageItem = new MenuItem { Header = "New image" };
+            newImageItem.Click += (_, _) => CreateNewImageAt(canvasPos);
+            menu.Items.Add(newImageItem);
 
             var resetViewItem = new MenuItem { Header = "Reset view" };
             resetViewItem.Click += (_, _) => FitAllCards();
@@ -1514,6 +1820,45 @@ namespace Apex.Views
                     $"Failed to create note:\n{ex.Message}",
                     "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        private void CreateNewImageAt(Point position)
+        {
+            if (Project == null) return;
+
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Select an image",
+                Filter = "Images|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp",
+                Multiselect = false
+            };
+
+            if (dialog.ShowDialog() != true) return;
+
+            string sourcePath = dialog.FileName;
+            string imagesFolder = Path.Combine(Project.RootFolder, ".images");
+            if (!Directory.Exists(imagesFolder))
+                Directory.CreateDirectory(imagesFolder);
+
+            string fileName = Path.GetFileName(sourcePath);
+            string destPath = Path.Combine(imagesFolder, fileName);
+
+            // Jeśli plik już istnieje w .images — użyj go bez kopiowania
+            if (!File.Exists(destPath))
+                File.Copy(sourcePath, destPath);
+
+            string relativePath = ".images/" + fileName;
+            string id = Guid.NewGuid().ToString("N")[..8];
+
+            var imageCard = new ImageCard(id, relativePath, position.X, position.Y);
+            Project.ImageCards.Add(imageCard);
+
+            var element = CreateImageCardElement(imageCard);
+            Canvas.SetLeft(element, position.X);
+            Canvas.SetTop(element, position.Y);
+            BoardCanvas.Children.Add(element);
+
+            FileService.SaveProject(Project);
         }
 
         // ──────────────────────────────────────────────

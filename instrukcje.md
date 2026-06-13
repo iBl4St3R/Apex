@@ -1,19 +1,19 @@
-Dobry pomysł. To sporo kodu — podzielmy na etapy żeby nie pogubić się w implementacji.
+Dobry pomysł. Zacznijmy od modelu, potem UI.
 
-Najpierw **model** — `NoteCard` nie nadaje się dla obrazów, potrzebujemy nowego modelu. Dodaj `ImageCard.cs`:
+**Model — `TitleCard.cs`:**
 
 ```csharp
 using System.Text.Json.Serialization;
 
 namespace Apex.Models;
 
-public class ImageCard
+public class TitleCard
 {
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
 
-    [JsonPropertyName("relativePath")]  // względem rootFolder, np. ".images/logo.png"
-    public string RelativePath { get; set; } = string.Empty;
+    [JsonPropertyName("text")]
+    public string Text { get; set; } = string.Empty;
 
     [JsonPropertyName("boardX")]
     public double BoardX { get; set; }
@@ -21,11 +21,20 @@ public class ImageCard
     [JsonPropertyName("boardY")]
     public double BoardY { get; set; }
 
-    [JsonPropertyName("categoryId")]
-    public string? CategoryId { get; set; }
-
     [JsonPropertyName("locked")]
     public bool Locked { get; set; } = false;
+
+    [JsonPropertyName("fontFamily")]
+    public string FontFamily { get; set; } = "Segoe UI";
+
+    [JsonPropertyName("fontSize")]
+    public double FontSize { get; set; } = 24;
+
+    [JsonPropertyName("fontColor")]
+    public string FontColor { get; set; } = "#CDD6F4";
+
+    [JsonPropertyName("backgroundColor")]
+    public string BackgroundColor { get; set; } = "#00000000"; // przezroczyste domyślnie
 
     [JsonPropertyName("customWidth")]
     public double? CustomWidth { get; set; }
@@ -33,12 +42,12 @@ public class ImageCard
     [JsonPropertyName("customHeight")]
     public double? CustomHeight { get; set; }
 
-    public ImageCard() { }
+    public TitleCard() { }
 
-    public ImageCard(string id, string relativePath, double boardX, double boardY)
+    public TitleCard(string id, string text, double boardX, double boardY)
     {
         Id = id;
-        RelativePath = relativePath;
+        Text = text;
         BoardX = boardX;
         BoardY = boardY;
     }
@@ -48,268 +57,420 @@ public class ImageCard
 Dodaj do `ApexProject.cs`:
 
 ```csharp
-[JsonPropertyName("imageCards")]
-public List<ImageCard> ImageCards { get; set; } = new();
+[JsonPropertyName("titleCards")]
+public List<TitleCard> TitleCards { get; set; } = new();
 ```
 
-Teraz **skalowanie** — dwa osobne boole w `BoardView.xaml.cs` obok istniejących:
+**Okno edycji — `TitleCardDialog.cs`** (dodaj jako nowy plik w Views):
 
 ```csharp
-public static bool ScaleImageCardsDown = true;
-public static bool ScaleImageCardsUp = false;  // domyślnie nie rozciągamy w górę
-```
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 
-Teraz **tworzenie elementu ImageCard** — dodaj metodę `CreateImageCardElement` w `BoardView.xaml.cs`:
+namespace Apex.Views;
 
-```csharp
-private Border CreateImageCardElement(ImageCard imageCard)
+public class TitleCardDialog : Window
 {
-    string fullPath = Project != null
-        ? FileService.GetFullPath(Project.RootFolder, imageCard.RelativePath)
-        : string.Empty;
+    private readonly TextBox _textBox;
+    private readonly ComboBox _fontFamilyBox;
+    private readonly Slider _fontSizeSlider;
+    private readonly TextBlock _fontSizeLabel;
+    private readonly TextBox _fontColorBox;
+    private readonly TextBox _bgColorBox;
+    private readonly TextBlock _preview;
 
-    double defaultWidth = imageCard.CustomWidth ?? 300;
-    double defaultHeight = imageCard.CustomHeight ?? 200;
+    public string ResultText { get; private set; } = "";
+    public string ResultFontFamily { get; private set; } = "Segoe UI";
+    public double ResultFontSize { get; private set; } = 24;
+    public string ResultFontColor { get; private set; } = "#CDD6F4";
+    public string ResultBackgroundColor { get; private set; } = "#00000000";
 
-    var cardBorder = new Border
+    private static readonly string[] FontOptions =
     {
-        Width = defaultWidth,
-        Height = defaultHeight,
-        ClipToBounds = true,
-        Background = new SolidColorBrush(Color.FromRgb(24, 24, 37)),
-        BorderBrush = imageCard.Locked
-            ? new SolidColorBrush(Color.FromRgb(98, 79, 120))
-            : new SolidColorBrush(Color.FromRgb(49, 50, 68)),
-        BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(8),
-        Cursor = imageCard.Locked ? Cursors.Arrow : Cursors.Hand,
-        Tag = imageCard,
-        Focusable = false
+        "Segoe UI", "Consolas", "Arial", "Georgia",
+        "Times New Roman", "Trebuchet MS", "Verdana", "Impact"
     };
 
-    var rootGrid = new Grid();
+    public TitleCardDialog(
+        string text = "",
+        string fontFamily = "Segoe UI",
+        double fontSize = 24,
+        string fontColor = "#CDD6F4",
+        string backgroundColor = "#00000000")
+    {
+        Title = "Title Card";
+        Width = 440;
+        Height = 420;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        ResizeMode = ResizeMode.NoResize;
+        Background = new SolidColorBrush(Color.FromRgb(30, 30, 46));
+        Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244));
+        FontFamily = new FontFamily("Segoe UI");
 
-    // Obraz jako tło
-    if (File.Exists(fullPath))
+        var stack = new StackPanel { Margin = new Thickness(20) };
+
+        // Tekst
+        stack.Children.Add(MakeLabel("Text (max 200 chars):"));
+        _textBox = new TextBox
+        {
+            Text = text,
+            MaxLength = 200,
+            FontSize = 13,
+            Padding = new Thickness(8, 4, 8, 4),
+            Margin = new Thickness(0, 0, 0, 12),
+            Background = new SolidColorBrush(Color.FromRgb(49, 50, 68)),
+            Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(69, 71, 90)),
+            BorderThickness = new Thickness(1),
+            CaretBrush = new SolidColorBrush(Color.FromRgb(205, 214, 244)),
+            AcceptsReturn = false
+        };
+        _textBox.TextChanged += (_, _) => UpdatePreview();
+        stack.Children.Add(_textBox);
+
+        // Font family
+        stack.Children.Add(MakeLabel("Font:"));
+        _fontFamilyBox = new ComboBox
+        {
+            Margin = new Thickness(0, 0, 0, 12),
+            FontSize = 13,
+            Background = new SolidColorBrush(Color.FromRgb(49, 50, 68)),
+            Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(69, 71, 90)),
+        };
+        foreach (var f in FontOptions) _fontFamilyBox.Items.Add(f);
+        _fontFamilyBox.SelectedItem = FontOptions.Contains(fontFamily) ? fontFamily : "Segoe UI";
+        _fontFamilyBox.SelectionChanged += (_, _) => UpdatePreview();
+        stack.Children.Add(_fontFamilyBox);
+
+        // Font size
+        var sizeRow = new Grid { Margin = new Thickness(0, 0, 0, 12) };
+        sizeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        sizeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(40) });
+        stack.Children.Add(MakeLabel("Font size:"));
+        _fontSizeSlider = new Slider
+        {
+            Minimum = 10, Maximum = 96,
+            Value = fontSize,
+            TickFrequency = 2,
+            IsSnapToTickEnabled = true
+        };
+        _fontSizeSlider.ValueChanged += (_, _) => { _fontSizeLabel.Text = ((int)_fontSizeSlider.Value).ToString(); UpdatePreview(); };
+        _fontSizeLabel = new TextBlock
+        {
+            Text = ((int)fontSize).ToString(),
+            Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244)),
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(8, 0, 0, 0)
+        };
+        Grid.SetColumn(_fontSizeSlider, 0);
+        Grid.SetColumn(_fontSizeLabel, 1);
+        sizeRow.Children.Add(_fontSizeSlider);
+        sizeRow.Children.Add(_fontSizeLabel);
+        stack.Children.Add(sizeRow);
+
+        // Kolory w jednym rzędzie
+        var colorRow = new Grid { Margin = new Thickness(0, 0, 0, 12) };
+        colorRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        colorRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
+        colorRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var fontColorStack = new StackPanel();
+        fontColorStack.Children.Add(MakeLabel("Font color (#hex):"));
+        _fontColorBox = MakeHexBox(fontColor.TrimStart('#'));
+        _fontColorBox.TextChanged += (_, _) => UpdatePreview();
+        fontColorStack.Children.Add(_fontColorBox);
+        Grid.SetColumn(fontColorStack, 0);
+        colorRow.Children.Add(fontColorStack);
+
+        var bgColorStack = new StackPanel();
+        bgColorStack.Children.Add(MakeLabel("Background (#hex):"));
+        _bgColorBox = MakeHexBox(backgroundColor.TrimStart('#').Length >= 6
+            ? backgroundColor.TrimStart('#')[^6..]
+            : "00000000");
+        _bgColorBox.TextChanged += (_, _) => UpdatePreview();
+        bgColorStack.Children.Add(_bgColorBox);
+        Grid.SetColumn(bgColorStack, 2);
+        colorRow.Children.Add(bgColorStack);
+
+        stack.Children.Add(colorRow);
+
+        // Preview
+        stack.Children.Add(MakeLabel("Preview:"));
+        var previewBorder = new Border
+        {
+            Height = 60,
+            CornerRadius = new CornerRadius(6),
+            Margin = new Thickness(0, 0, 0, 16),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(69, 71, 90)),
+            BorderThickness = new Thickness(1)
+        };
+        _preview = new TextBlock
+        {
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Padding = new Thickness(8)
+        };
+        previewBorder.Child = _preview;
+        stack.Children.Add(previewBorder);
+
+        // Przyciski
+        var btnRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        var okBtn = MakeButton("OK", Color.FromRgb(29, 158, 117), Brushes.White);
+        okBtn.Click += (_, _) => Confirm();
+        var cancelBtn = MakeButton("Cancel", Color.FromRgb(49, 50, 68), new SolidColorBrush(Color.FromRgb(205, 214, 244)));
+        cancelBtn.Click += (_, _) => { DialogResult = false; };
+        btnRow.Children.Add(okBtn);
+        btnRow.Children.Add(cancelBtn);
+        stack.Children.Add(btnRow);
+
+        Content = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+
+        _textBox.KeyDown += (_, e) =>
+        {
+            if (e.Key == System.Windows.Input.Key.Enter) Confirm();
+            if (e.Key == System.Windows.Input.Key.Escape) DialogResult = false;
+        };
+
+        Loaded += (_, _) =>
+        {
+            _textBox.Focus();
+            _textBox.SelectAll();
+            UpdatePreview();
+        };
+    }
+
+    private void UpdatePreview()
     {
         try
         {
-            var bitmap = new System.Windows.Media.Imaging.BitmapImage();
-            bitmap.BeginInit();
-            bitmap.UriSource = new Uri(fullPath, UriKind.Absolute);
-            bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-            bitmap.EndInit();
+            _preview.Text = _textBox.Text;
+            _preview.FontFamily = new FontFamily(_fontFamilyBox.SelectedItem?.ToString() ?? "Segoe UI");
+            _preview.FontSize = Math.Clamp(_fontSizeSlider.Value, 10, 48); // ogranicz w preview
+            _preview.Foreground = ParseColor(_fontColorBox.Text, Color.FromRgb(205, 214, 244));
 
-            double imgW = bitmap.PixelWidth;
-            double renderWidth = defaultWidth;
-
-            if (imgW > defaultWidth && ScaleImageCardsDown)
-                renderWidth = defaultWidth;
-            else if (imgW < defaultWidth && ScaleImageCardsUp)
-                renderWidth = defaultWidth;
-            else
-                renderWidth = imgW;
-
-            var image = new System.Windows.Controls.Image
-            {
-                Source = bitmap,
-                Width = renderWidth,
-                Stretch = System.Windows.Media.Stretch.Uniform,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            rootGrid.Children.Add(image);
+            var bgColor = ParseColorRaw(_bgColorBox.Text);
+            if (_preview.Parent is Border b)
+                b.Background = new SolidColorBrush(bgColor);
         }
         catch { }
     }
 
-    // Overlay — kategoria (góra-prawo) i kłódka+data (dół-prawo)
-    var overlay = new Grid();
-
-    // Kategoria badge
-    string? catColor = null;
-    string? catName = null;
-    if (!string.IsNullOrEmpty(imageCard.CategoryId) && Project != null)
+    private void Confirm()
     {
-        var cat = Project.Categories.FirstOrDefault(c => c.Id == imageCard.CategoryId);
-        if (cat != null) { catColor = cat.Color; catName = cat.Name; }
+        if (string.IsNullOrWhiteSpace(_textBox.Text)) return;
+
+        ResultText = _textBox.Text.Trim();
+        ResultFontFamily = _fontFamilyBox.SelectedItem?.ToString() ?? "Segoe UI";
+        ResultFontSize = (int)_fontSizeSlider.Value;
+        ResultFontColor = "#" + _fontColorBox.Text.TrimStart('#').ToUpperInvariant().PadLeft(6, '0');
+        ResultBackgroundColor = "#" + _bgColorBox.Text.TrimStart('#').ToUpperInvariant().PadLeft(8, '0');
+        DialogResult = true;
     }
 
-    if (catName != null)
+    private static TextBlock MakeLabel(string text) => new()
     {
-        var catBadge = new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(180,
-                Convert.ToByte(catColor!.TrimStart('#')[..2], 16),
-                Convert.ToByte(catColor.TrimStart('#')[2..4], 16),
-                Convert.ToByte(catColor.TrimStart('#')[4..6], 16))),
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(6, 2, 6, 2),
-            Margin = new Thickness(0, 6, 6, 0),
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Top,
-            Child = new TextBlock
-            {
-                Text = catName,
-                FontSize = 11,
-                Foreground = Brushes.White,
-                FontWeight = FontWeights.SemiBold
-            }
-        };
-        overlay.Children.Add(catBadge);
-    }
-
-    // Dół-prawo: kłódka + data
-    string modifiedDateTime = "";
-    if (File.Exists(fullPath))
-    {
-        try { modifiedDateTime = new FileInfo(fullPath).LastWriteTime.ToString("yyyy-MM-dd"); }
-        catch { }
-    }
-
-    var bottomPanel = new StackPanel
-    {
-        Orientation = Orientation.Horizontal,
-        HorizontalAlignment = HorizontalAlignment.Right,
-        VerticalAlignment = VerticalAlignment.Bottom,
-        Margin = new Thickness(0, 0, 6, 6)
+        Text = text,
+        FontSize = 11,
+        Foreground = new SolidColorBrush(Color.FromRgb(166, 173, 200)),
+        Margin = new Thickness(0, 0, 0, 4)
     };
 
-    var bottomBg = new Border
+    private static TextBox MakeHexBox(string value) => new()
     {
-        Background = new SolidColorBrush(Color.FromArgb(160, 17, 17, 27)),
-        CornerRadius = new CornerRadius(4),
-        Padding = new Thickness(6, 2, 6, 2),
-        HorizontalAlignment = HorizontalAlignment.Right,
-        VerticalAlignment = VerticalAlignment.Bottom,
-        Margin = new Thickness(0, 0, 6, 6)
+        Text = value,
+        FontFamily = new FontFamily("Consolas"),
+        FontSize = 12,
+        MaxLength = 8,
+        Padding = new Thickness(6, 3, 6, 3),
+        Background = new SolidColorBrush(Color.FromRgb(49, 50, 68)),
+        Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244)),
+        BorderBrush = new SolidColorBrush(Color.FromRgb(69, 71, 90)),
+        BorderThickness = new Thickness(1),
+        CaretBrush = new SolidColorBrush(Color.FromRgb(205, 214, 244))
     };
 
-    var bottomContent = new StackPanel { Orientation = Orientation.Horizontal };
+    private static Button MakeButton(string text, Color bg, Brush fg) => new()
+    {
+        Content = text,
+        Width = 80,
+        Height = 32,
+        Margin = new Thickness(4, 0, 0, 0),
+        Background = new SolidColorBrush(bg),
+        Foreground = fg,
+        BorderThickness = new Thickness(0),
+        Cursor = System.Windows.Input.Cursors.Hand
+    };
 
+    private static SolidColorBrush ParseColor(string hex, Color fallback)
+    {
+        try { return new SolidColorBrush(ParseColorRaw(hex)); }
+        catch { return new SolidColorBrush(fallback); }
+    }
+
+    private static Color ParseColorRaw(string hex)
+    {
+        hex = hex.TrimStart('#');
+        if (hex.Length == 6)
+            return Color.FromRgb(
+                Convert.ToByte(hex[..2], 16),
+                Convert.ToByte(hex[2..4], 16),
+                Convert.ToByte(hex[4..6], 16));
+        if (hex.Length == 8)
+            return Color.FromArgb(
+                Convert.ToByte(hex[..2], 16),
+                Convert.ToByte(hex[2..4], 16),
+                Convert.ToByte(hex[4..6], 16),
+                Convert.ToByte(hex[6..8], 16));
+        throw new FormatException();
+    }
+}
+```
+
+Teraz w `BoardView.xaml.cs` dodaj rendering i interakcje. W `RenderCards`:
+
+```csharp
+foreach (var titleCard in Project.TitleCards)
+{
+    var element = CreateTitleCardElement(titleCard);
+    BoardCanvas.Children.Add(element);
+    Canvas.SetLeft(element, titleCard.BoardX);
+    Canvas.SetTop(element, titleCard.BoardY);
+}
+```
+
+Metoda `CreateTitleCardElement`:
+
+```csharp
+private Border CreateTitleCardElement(TitleCard titleCard)
+{
+    var bg = ParseHexBrush(titleCard.BackgroundColor);
+
+    double w = titleCard.CustomWidth ?? 300;
+    double h = titleCard.CustomHeight ?? 80;
+
+    var cardBorder = new Border
+    {
+        Width = w,
+        Height = h,
+        Background = bg,
+        BorderBrush = titleCard.Locked
+            ? new SolidColorBrush(Color.FromRgb(98, 79, 120))
+            : new SolidColorBrush(Color.FromRgb(69, 71, 90)),
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(8),
+        Cursor = titleCard.Locked ? Cursors.Arrow : Cursors.Hand,
+        Tag = titleCard,
+        Focusable = false,
+        ClipToBounds = true
+    };
+
+    var grid = new Grid();
+
+    var textBlock = new TextBlock
+    {
+        Text = titleCard.Text,
+        FontFamily = new FontFamily(titleCard.FontFamily),
+        FontSize = titleCard.FontSize,
+        Foreground = ParseHexBrush(titleCard.FontColor),
+        HorizontalAlignment = HorizontalAlignment.Center,
+        VerticalAlignment = VerticalAlignment.Center,
+        TextWrapping = TextWrapping.Wrap,
+        Padding = new Thickness(12, 8, 12, 8)
+    };
+    grid.Children.Add(textBlock);
+
+    // Kłódka w rogu
     var lockIcon = new TextBlock
     {
-        Text = imageCard.Locked ? "🔒" : "🔓",
+        Text = titleCard.Locked ? "🔒" : "🔓",
         FontSize = 11,
         Cursor = Cursors.Hand,
-        VerticalAlignment = VerticalAlignment.Center,
-        Margin = new Thickness(0, 0, 4, 0),
-        ToolTip = imageCard.Locked ? "Unlock" : "Lock"
+        HorizontalAlignment = HorizontalAlignment.Right,
+        VerticalAlignment = VerticalAlignment.Bottom,
+        Margin = new Thickness(0, 0, 6, 4),
+        ToolTip = titleCard.Locked ? "Unlock" : "Lock"
     };
     lockIcon.MouseLeftButtonDown += (_, e) => e.Handled = true;
     lockIcon.MouseLeftButtonUp += (_, e) =>
     {
-        imageCard.Locked = !imageCard.Locked;
+        titleCard.Locked = !titleCard.Locked;
         var current = BoardCanvas.Children.OfType<Border>()
-            .FirstOrDefault(b => b.Tag == imageCard);
-        if (current != null) ReplaceImageCardElement(imageCard, current);
+            .FirstOrDefault(b => b.Tag == titleCard);
+        if (current != null) ReplaceTitleCardElement(titleCard, current);
         if (Project != null) FileService.SaveProject(Project);
         e.Handled = true;
     };
-    bottomContent.Children.Add(lockIcon);
+    grid.Children.Add(lockIcon);
 
-    if (!string.IsNullOrEmpty(modifiedDateTime))
-        bottomContent.Children.Add(new TextBlock
-        {
-            Text = modifiedDateTime,
-            FontSize = 10,
-            Foreground = new SolidColorBrush(Color.FromRgb(166, 173, 200)),
-            VerticalAlignment = VerticalAlignment.Center
-        });
+    cardBorder.Child = grid;
 
-    bottomBg.Child = bottomContent;
-    overlay.Children.Add(bottomBg);
-    rootGrid.Children.Add(overlay);
-    cardBorder.Child = rootGrid;
-
-    // Events — drag, resize, context menu
-    cardBorder.MouseLeftButtonDown += ImageCard_MouseLeftButtonDown;
+    cardBorder.MouseLeftButtonDown += TitleCard_MouseLeftButtonDown;
     cardBorder.MouseMove += Card_MouseMove;
     cardBorder.MouseLeftButtonUp += Card_MouseLeftButtonUp;
     cardBorder.MouseLeave += Card_ResizeMouseLeave;
-    cardBorder.ContextMenu = BuildImageCardContextMenu(imageCard, cardBorder);
+    cardBorder.ContextMenu = BuildTitleCardContextMenu(titleCard, cardBorder);
 
     return cardBorder;
 }
 
-private void ReplaceImageCardElement(ImageCard imageCard, Border oldElement)
+private void ReplaceTitleCardElement(TitleCard titleCard, Border oldElement)
 {
     int idx = BoardCanvas.Children.IndexOf(oldElement);
     if (idx >= 0)
     {
-        var newElement = CreateImageCardElement(imageCard);
-        Canvas.SetLeft(newElement, imageCard.BoardX);
-        Canvas.SetTop(newElement, imageCard.BoardY);
+        var newElement = CreateTitleCardElement(titleCard);
+        Canvas.SetLeft(newElement, titleCard.BoardX);
+        Canvas.SetTop(newElement, titleCard.BoardY);
         BoardCanvas.Children.RemoveAt(idx);
         BoardCanvas.Children.Insert(idx, newElement);
     }
 }
-```
 
-Context menu dla ImageCard:
-
-```csharp
-private ContextMenu BuildImageCardContextMenu(ImageCard imageCard, Border cardElement)
+private ContextMenu BuildTitleCardContextMenu(TitleCard titleCard, Border cardElement)
 {
     var menu = new ContextMenu();
 
-    var catItem = new MenuItem { Header = "Set category" };
-    if (Project != null)
+    var editItem = new MenuItem { Header = "Edit" };
+    editItem.Click += (_, _) =>
     {
-        foreach (var cat in Project.Categories)
+        var dialog = new TitleCardDialog(
+            titleCard.Text, titleCard.FontFamily,
+            titleCard.FontSize, titleCard.FontColor, titleCard.BackgroundColor);
+        dialog.Owner = Window.GetWindow(this);
+        if (dialog.ShowDialog() == true)
         {
-            var subItem = new MenuItem
-            {
-                Header = cat.Name,
-                IsChecked = string.Equals(imageCard.CategoryId, cat.Id, StringComparison.OrdinalIgnoreCase)
-            };
-            subItem.Click += (_, _) =>
-            {
-                imageCard.CategoryId = cat.Id;
-                ReplaceImageCardElement(imageCard, cardElement);
-                FileService.SaveProject(Project!);
-            };
-            catItem.Items.Add(subItem);
+            titleCard.Text = dialog.ResultText;
+            titleCard.FontFamily = dialog.ResultFontFamily;
+            titleCard.FontSize = dialog.ResultFontSize;
+            titleCard.FontColor = dialog.ResultFontColor;
+            titleCard.BackgroundColor = dialog.ResultBackgroundColor;
+            ReplaceTitleCardElement(titleCard, cardElement);
+            if (Project != null) FileService.SaveProject(Project);
         }
-    }
-    var noCatItem = new MenuItem { Header = "(None)" };
-    noCatItem.Click += (_, _) =>
-    {
-        imageCard.CategoryId = null;
-        ReplaceImageCardElement(imageCard, cardElement);
-        FileService.SaveProject(Project!);
     };
-    catItem.Items.Add(noCatItem);
-    menu.Items.Add(catItem);
+    menu.Items.Add(editItem);
 
     var deleteItem = new MenuItem { Header = "Delete" };
     deleteItem.Click += (_, _) =>
     {
-        var result = System.Windows.MessageBox.Show(
-            "Remove this image from the board?\n(File will NOT be deleted from disk.)",
-            "Remove Image",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
-        if (result == MessageBoxResult.Yes)
-        {
-            Project?.ImageCards.Remove(imageCard);
-            BoardCanvas.Children.Remove(cardElement);
-            if (Project != null) FileService.SaveProject(Project);
-        }
+        Project?.TitleCards.Remove(titleCard);
+        BoardCanvas.Children.Remove(cardElement);
+        if (Project != null) FileService.SaveProject(Project);
     };
     menu.Items.Add(deleteItem);
+
     return menu;
 }
-```
 
-Mouse down dla ImageCard (osobny handler bo `Tag` jest `ImageCard` nie `NoteCard`):
-
-```csharp
-private void ImageCard_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+private void TitleCard_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
 {
-    if (sender is Border border && border.Tag is ImageCard imageCard)
+    if (sender is Border border && border.Tag is TitleCard titleCard)
     {
-        if (imageCard.Locked) return;
+        if (titleCard.Locked) return;
 
         Point local = e.GetPosition(border);
         if (GetResizeEdge(border, local) != ResizeEdge.None)
@@ -320,7 +481,7 @@ private void ImageCard_MouseLeftButtonDown(object sender, MouseButtonEventArgs e
 
         _isDraggingCard = true;
         _dragElement = border;
-        _dragCard = null; // ImageCard nie jest NoteCard
+        _dragCard = null;
         _dragStartMouse = e.GetPosition(BoardCanvas);
         _dragStartLeft = Canvas.GetLeft(border);
         _dragStartTop = Canvas.GetTop(border);
@@ -331,154 +492,89 @@ private void ImageCard_MouseLeftButtonDown(object sender, MouseButtonEventArgs e
 }
 ```
 
-Teraz aktualizuj `RenderCards` żeby renderował też ImageCards:
+Zapisywanie pozycji po drag — w `Card_MouseLeftButtonUp` rozszerz blok `else if`:
 
 ```csharp
-private void RenderCards()
+else if (_dragElement.Tag is ImageCard imgCard)
 {
-    BoardCanvas.Children.Clear();
-    _connectionLines.Clear();
-    if (Project == null) return;
-
-    foreach (var card in Project.Cards)
-    {
-        var element = CreateCardElement(card);
-        BoardCanvas.Children.Add(element);
-        Canvas.SetLeft(element, card.BoardX);
-        Canvas.SetTop(element, card.BoardY);
-    }
-
-    // ImageCards
-    foreach (var imageCard in Project.ImageCards)
-    {
-        var element = CreateImageCardElement(imageCard);
-        BoardCanvas.Children.Add(element);
-        Canvas.SetLeft(element, imageCard.BoardX);
-        Canvas.SetTop(element, imageCard.BoardY);
-    }
-
-    Dispatcher.BeginInvoke(new Action(RenderConnections),
-        System.Windows.Threading.DispatcherPriority.Loaded);
+    imgCard.BoardX = newX;
+    imgCard.BoardY = newY;
+}
+else if (_dragElement.Tag is TitleCard titleCard)
+{
+    titleCard.BoardX = newX;
+    titleCard.BoardY = newY;
 }
 ```
 
-I obsługa drag end dla ImageCard — w `Card_MouseLeftButtonUp` dodaj case gdy `_dragCard == null` ale `_dragElement?.Tag is ImageCard`:
+Resize TitleCard — w `Card_MouseLeftButtonUp` w bloku resize:
 
 ```csharp
-if (_isDraggingCard && _dragElement != null)
+else if (_resizeElement.Tag is TitleCard titleCard)
 {
-    _dragElement.ReleaseMouseCapture();
-
-    if (_didDrag)
-    {
-        double newX = Canvas.GetLeft(_dragElement);
-        double newY = Canvas.GetTop(_dragElement);
-
-        if (_dragCard != null)
-        {
-            _dragCard.BoardX = newX;
-            _dragCard.BoardY = newY;
-        }
-        else if (_dragElement.Tag is ImageCard imgCard)
-        {
-            imgCard.BoardX = newX;
-            imgCard.BoardY = newY;
-        }
-
-        if (Project != null) FileService.SaveProject(Project);
-    }
-    else
-    {
-        if (_dragCard != null)
-            CardSelected?.Invoke(_dragCard);
-        // ImageCard — klik bez drag nie robi nic
-    }
-
-    _isDraggingCard = false;
-    _dragElement = null;
-    _dragCard = null;
-    _didDrag = false;
-    e.Handled = true;
+    titleCard.CustomWidth = _resizeElement.Width;
+    titleCard.CustomHeight = _resizeElement.Height;
+    ReplaceTitleCardElement(titleCard, _resizeElement);
 }
 ```
 
-Na końcu — "New Image" w context menu prawego kliku na boardzie, w `CanvasTransformHost_MouseRightButtonUp`:
+Locked check w `Card_ResizeMouseLeftButtonDown`:
 
 ```csharp
-var newImageItem = new MenuItem { Header = "New image" };
-newImageItem.Click += (_, _) => CreateNewImageAt(canvasPos);
-menu.Items.Add(newImageItem);
+if (border.Tag is TitleCard tc && tc.Locked) return;
 ```
 
-I metoda:
+`IsClickOnCard` — dodaj `TitleCard`:
 
 ```csharp
-private void CreateNewImageAt(Point position)
+private bool IsClickOnCard(DependencyObject? source)
+{
+    return FindAncestor<Border>(source, 
+        b => b.Tag is NoteCard || b.Tag is ImageCard || b.Tag is TitleCard) != null;
+}
+```
+
+I prawy klik canvas — dodaj `TitleCard` do guard:
+
+```csharp
+if (FindAncestor<Border>(e.OriginalSource as DependencyObject, 
+    b => b.Tag is NoteCard || b.Tag is ImageCard || b.Tag is TitleCard) != null)
+    return;
+```
+
+I "New title" w menu:
+
+```csharp
+var newTitleItem = new MenuItem { Header = "New title" };
+newTitleItem.Click += (_, _) => CreateNewTitleAt(canvasPos);
+menu.Items.Add(newTitleItem);
+```
+
+```csharp
+private void CreateNewTitleAt(Point position)
 {
     if (Project == null) return;
 
-    var dialog = new Microsoft.Win32.OpenFileDialog
-    {
-        Title = "Select an image",
-        Filter = "Images|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp",
-        Multiselect = false
-    };
-
+    var dialog = new TitleCardDialog();
+    dialog.Owner = Window.GetWindow(this);
     if (dialog.ShowDialog() != true) return;
 
-    string sourcePath = dialog.FileName;
-    string imagesFolder = Path.Combine(Project.RootFolder, ".images");
-    if (!Directory.Exists(imagesFolder))
-        Directory.CreateDirectory(imagesFolder);
-
-    string fileName = Path.GetFileName(sourcePath);
-    string destPath = Path.Combine(imagesFolder, fileName);
-
-    // Jeśli plik już istnieje w .images — użyj go bez kopiowania
-    if (!File.Exists(destPath))
-        File.Copy(sourcePath, destPath);
-
-    string relativePath = ".images/" + fileName;
     string id = Guid.NewGuid().ToString("N")[..8];
+    var titleCard = new TitleCard(id, dialog.ResultText, position.X, position.Y)
+    {
+        FontFamily = dialog.ResultFontFamily,
+        FontSize = dialog.ResultFontSize,
+        FontColor = dialog.ResultFontColor,
+        BackgroundColor = dialog.ResultBackgroundColor
+    };
 
-    var imageCard = new ImageCard(id, relativePath, position.X, position.Y);
-    Project.ImageCards.Add(imageCard);
+    Project.TitleCards.Add(titleCard);
 
-    var element = CreateImageCardElement(imageCard);
+    var element = CreateTitleCardElement(titleCard);
     Canvas.SetLeft(element, position.X);
     Canvas.SetTop(element, position.Y);
     BoardCanvas.Children.Add(element);
 
     FileService.SaveProject(Project);
-}
-```
-
-Resize ImageCard — w `Card_MouseLeftButtonUp` w bloku resize dodaj obsługę `ImageCard` analogicznie do `NoteCard`:
-
-```csharp
-if (_isResizing && _resizeElement != null)
-{
-    _resizeElement.ReleaseMouseCapture();
-
-    if (_resizeCard != null)
-    {
-        _resizeCard.CustomWidth = _resizeElement.Width;
-        _resizeCard.CustomHeight = _resizeElement.Height;
-        ReplaceCardElement(_resizeCard, _resizeElement);
-    }
-    else if (_resizeElement.Tag is ImageCard imgCard)
-    {
-        imgCard.CustomWidth = _resizeElement.Width;
-        imgCard.CustomHeight = _resizeElement.Height;
-        ReplaceImageCardElement(imgCard, _resizeElement);
-    }
-
-    if (Project != null) FileService.SaveProject(Project);
-
-    _isResizing = false;
-    _resizeElement = null;
-    _resizeCard = null;
-    e.Handled = true;
-    return;
 }
 ```
