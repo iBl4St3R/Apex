@@ -1542,6 +1542,8 @@ namespace Apex.Views
                 FontFamily = new FontFamily(titleCard.FontFamily),
                 FontSize = titleCard.FontSize,
                 Foreground = ParseHexBrush(titleCard.FontColor),
+                FontWeight = titleCard.Bold ? FontWeights.Bold : FontWeights.Normal,
+                FontStyle = titleCard.Italic ? FontStyles.Italic : FontStyles.Normal,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
                 TextWrapping = TextWrapping.Wrap,
@@ -1605,7 +1607,8 @@ namespace Apex.Views
             {
                 var dialog = new TitleCardDialog(
                     titleCard.Text, titleCard.FontFamily,
-                    titleCard.FontSize, titleCard.FontColor, titleCard.BackgroundColor);
+                    titleCard.FontSize, titleCard.FontColor, titleCard.BackgroundColor,
+                    titleCard.Bold, titleCard.Italic);
                 dialog.Owner = Window.GetWindow(this);
                 if (dialog.ShowDialog() == true)
                 {
@@ -1614,6 +1617,8 @@ namespace Apex.Views
                     titleCard.FontSize = dialog.ResultFontSize;
                     titleCard.FontColor = dialog.ResultFontColor;
                     titleCard.BackgroundColor = dialog.ResultBackgroundColor;
+                    titleCard.Bold = dialog.ResultBold;
+                    titleCard.Italic = dialog.ResultItalic;
                     ReplaceTitleCardElement(titleCard, cardElement);
                     if (Project != null) FileService.SaveProject(Project);
                 }
@@ -2048,7 +2053,9 @@ namespace Apex.Views
                 FontFamily = dialog.ResultFontFamily,
                 FontSize = dialog.ResultFontSize,
                 FontColor = dialog.ResultFontColor,
-                BackgroundColor = dialog.ResultBackgroundColor
+                BackgroundColor = dialog.ResultBackgroundColor,
+                Bold = dialog.ResultBold,
+                Italic = dialog.ResultItalic
             };
 
             Project.TitleCards.Add(titleCard);

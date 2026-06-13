@@ -51,12 +51,31 @@ public class TitleCardDialog : Window
         ("#F5C2E7", "Light pink"),
         ("#A6ADC8", "Gray"),
         ("#585B70", "Dark gray"),
+        ("#FFFFFF", "Pure white"),
+    ("#CDD6F4", "Light blue-white"),
+    ("#BAC2DE", "Soft blue"),
+    ("#A6ADC8", "Muted blue"),
+    ("#F5E0DC", "Rosewater"),
+    ("#F2CDCD", "Flamingo"),
+    ("#F38BA8", "Pink"),
+    ("#FAB387", "Peach"),
+    ("#F9E2AF", "Yellow"),
+    ("#A6E3A1", "Green"),
+    ("#94E2D5", "Teal"),
+    ("#89DCEB", "Sky"),
+    ("#89B4FA", "Light blue"),
+    ("#B4BEFE", "Lavender"),
+    ("#CBA6F7", "Purple"),
+    ("#E24B4A", "Red"),
+    ("#EF9F27", "Orange"),
+    ("#1D9E75", "Dark green"),
+    ("#378ADD", "Blue"),
+    ("#11111B", "Near black"),
     };
 
     // Bg palette — background colors (includes transparent)
     private static readonly (string Hex, string Label)[] BgColors =
     {
-        ("#00000000", "Transparent"),
         ("#11111B",   "Near black"),
         ("#1E1E2E",   "Dark"),
         ("#313244",   "Surface"),
@@ -70,6 +89,26 @@ public class TitleCardDialog : Window
         ("#F38BA8",   "Pink"),
         ("#181825",   "Mantle"),
         ("#CDD6F4",   "Light"),
+        ("#11111B", "Crust"),
+    ("#181825", "Mantle"),
+    ("#1E1E2E", "Base"),
+    ("#24273A", "Dark navy"),
+    ("#1A1A2E", "Deep navy"),
+    ("#0D1117", "GitHub dark"),
+    ("#0A0A0F", "Near black"),
+    ("#1C1C1C", "Charcoal"),
+    ("#2D2D2D", "Dark gray"),
+    ("#313244", "Surface 0"),
+    ("#45475A", "Surface 1"),
+    ("#1A0A0A", "Dark red"),
+    ("#1A1200", "Dark yellow"),
+    ("#0A1A0A", "Dark green"),
+    ("#0A0A1A", "Dark blue"),
+    ("#1A0A1A", "Dark purple"),
+    ("#2C1810", "Dark brown"),
+    ("#1A2634", "Dark teal"),
+    ("#2D1B33", "Dark violet"),
+    ("#0F1923", "Dark ocean"),
     };
 
     public TitleCardDialog(
@@ -77,10 +116,15 @@ public class TitleCardDialog : Window
         string fontFamily = "Segoe UI",
         double fontSize = 32,
         string fontColor = "#CDD6F4",
-        string backgroundColor = "#00000000")
+        string backgroundColor = "#00000000",
+        bool bold = false,
+        bool italic = false)
     {
         _selectedFgColor = fontColor;
         _selectedBgColor = backgroundColor;
+        _selectedFgColor = fontColor;
+        _selectedBgColor = backgroundColor;
+        // ustaw stan checkboxów — muszą być przed InitializeComponent/budowaniem UI
 
         Title = "Title Card";
         Width = 600;
@@ -216,23 +260,23 @@ public class TitleCardDialog : Window
     Margin = new Thickness(0, 6, 0, 0)
 };
 
-_boldCheck = new CheckBox
-{
-    Content = "Bold",
-    Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244)),
-    Margin = new Thickness(0, 0, 12, 0),
-    IsChecked = false
-};
-_boldCheck.Checked += (_, _) => UpdatePreview();
+        _boldCheck = new CheckBox
+        {
+            Content = "Bold",
+            Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244)),
+            Margin = new Thickness(0, 0, 12, 0),
+            IsChecked = bold
+        };
+        _boldCheck.Checked += (_, _) => UpdatePreview();
 _boldCheck.Unchecked += (_, _) => UpdatePreview();
 
-_italicCheck = new CheckBox
-{
-    Content = "Italic",
-    Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244)),
-    IsChecked = false
-};
-_italicCheck.Checked += (_, _) => UpdatePreview();
+        _italicCheck = new CheckBox
+        {
+            Content = "Italic",
+            Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244)),
+            IsChecked = italic
+        };
+        _italicCheck.Checked += (_, _) => UpdatePreview();
 _italicCheck.Unchecked += (_, _) => UpdatePreview();
 
 styleRow.Children.Add(_boldCheck);
@@ -518,6 +562,8 @@ Grid.SetColumn(sizeStack, 2);
         ResultBackgroundColor = _selectedBgColor.StartsWith('#')
             ? _selectedBgColor.ToUpperInvariant()
             : "#" + _selectedBgColor.ToUpperInvariant();
+        ResultBold = _boldCheck.IsChecked == true;
+        ResultItalic = _italicCheck.IsChecked == true;
         DialogResult = true;
     }
 

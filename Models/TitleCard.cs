@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace Apex.Models;
 
@@ -27,6 +27,12 @@ public class TitleCard
 
     [JsonPropertyName("fontColor")]
     public string FontColor { get; set; } = "#CDD6F4";
+
+    [JsonPropertyName("bold")]
+    public bool Bold { get; set; } = false;
+
+    [JsonPropertyName("italic")]
+    public bool Italic { get; set; } = false;
 
     [JsonPropertyName("backgroundColor")]
     public string BackgroundColor { get; set; } = "#00000000"; // przezroczyste domyślnie
