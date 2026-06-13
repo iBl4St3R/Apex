@@ -28,6 +28,9 @@ public class NoteCard
     [JsonPropertyName("customHeight")]
     public double? CustomHeight { get; set; }
 
+    [JsonPropertyName("locked")]
+    public bool Locked { get; set; } = false;
+
     public NoteCard() { }
 
     public NoteCard(string relativePath, double boardX, double boardY, string? categoryId = null)

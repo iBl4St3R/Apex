@@ -83,11 +83,10 @@ public sealed class PreviewCache : IDisposable
 
             string raw = System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
 
-            // Usuń tylko bloki kodu i wiki-linki — resztę MD zostawiamy dla renderera
             string plain = System.Text.RegularExpressions.Regex.Replace(
                 raw, @"```[\s\S]*?```", "");
             plain = System.Text.RegularExpressions.Regex.Replace(
-                plain, @"\[\[([^\]]+)\]\]", "$1");
+                plain, @"\[\[([^\]]+)\]\]", "apex_link§$1§");
             plain = System.Text.RegularExpressions.Regex.Replace(
                 plain, @"\[([^\]]+)\]\([^)]+\)", "$1");
             plain = System.Text.RegularExpressions.Regex.Replace(

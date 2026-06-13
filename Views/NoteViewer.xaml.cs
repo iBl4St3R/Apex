@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -22,6 +22,8 @@ namespace Apex.Views
         private string? _currentRelativePath;
         private string? _savedContent;
         private FileSystemWatcher? _watcher;
+
+        private int _wikiTriggerIndex = -1; // pozycja [[ w tekście
 
         /// <summary>
         /// Fires when the user clicks a wiki [[link]] inside the note.
@@ -111,6 +113,10 @@ namespace Apex.Views
             ReadContent.Visibility = Visibility.Visible;
             EditContent.Visibility = Visibility.Collapsed;
 
+            EditContent.TextChanged -= EditContent_WikiTextChanged;
+            EditContent.PreviewKeyDown -= EditContent_WikiKeyDown;
+            WikiLinkPopup.Visibility = Visibility.Collapsed;
+
             // Focus the viewer (not the editor)
             ReadContent.Focus();
         }
@@ -132,6 +138,9 @@ namespace Apex.Views
             // Focus the editor
             EditContent.Focus();
             EditContent.CaretIndex = EditContent.Text.Length;
+
+            EditContent.TextChanged += EditContent_WikiTextChanged;
+            EditContent.PreviewKeyDown += EditContent_WikiKeyDown;
         }
 
         // ──────────────────────────────────────────────
@@ -140,10 +149,21 @@ namespace Apex.Views
 
         private void RenderMarkdown(string markdown)
         {
-            ReadContent.Document = MarkdownRenderer.RenderToFlowDocument(markdown, target =>
-            {
-                LinkClicked?.Invoke(target);
-            });
+            ReadContent.Document = MarkdownRenderer.RenderToFlowDocument(markdown,
+                target => LinkClicked?.Invoke(target),
+                linkTarget =>
+                {
+                    if (_project == null) return false;
+                    return _project.Cards.Any(c =>
+                        string.Equals(
+                            Path.GetFileNameWithoutExtension(c.RelativePath),
+                            linkTarget,
+                            StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(
+                            c.RelativePath.Replace('\\', '/').Replace(".md", ""),
+                            linkTarget,
+                            StringComparison.OrdinalIgnoreCase));
+                });
         }
 
         // ──────────────────────────────────────────────
@@ -220,6 +240,131 @@ namespace Apex.Views
         private void CancelButton_Click(object sender, RoutedEventArgs e)
         {
             CancelEdit();
+        }
+
+        // ──────────────────────────────────────────────
+        //  Wiki-link autocomplete
+        // ──────────────────────────────────────────────
+
+        private void EditContent_WikiTextChanged(object sender, TextChangedEventArgs e)
+        {
+            int caret = EditContent.CaretIndex;
+            string text = EditContent.Text;
+
+            // Znajdź ostatnie [[ przed kursorem (niezamknięte)
+            int searchFrom = Math.Max(0, caret - 1);
+            int triggerIdx = -1;
+
+            for (int i = searchFrom; i >= 1; i--)
+            {
+                if (text[i] == '[' && text[i - 1] == '[')
+                {
+                    // Sprawdź czy nie ma zamknięcia ]] między [[ a kursorem
+                    string between = text.Substring(i + 1, caret - i - 1);
+                    if (!between.Contains("]]"))
+                    {
+                        triggerIdx = i - 1; // pozycja pierwszego [
+                        break;
+                    }
+                }
+            }
+
+            if (triggerIdx < 0)
+            {
+                WikiLinkPopup.Visibility = Visibility.Collapsed;
+                _wikiTriggerIndex = -1;
+                return;
+            }
+
+            _wikiTriggerIndex = triggerIdx;
+
+            // Tekst filtra — wszystko po [[ do kursora
+            string filter = text.Substring(triggerIdx + 2, caret - triggerIdx - 2);
+
+            // Znajdź pasujące pliki
+            if (_project == null) return;
+
+            // Zbierz wszystkie nazwy żeby wykryć duplikaty
+            var matches = _project.Cards
+    .Where(c => Path.GetFileNameWithoutExtension(c.RelativePath)
+        .Contains(filter, StringComparison.OrdinalIgnoreCase))
+    .OrderBy(c => c.RelativePath)
+    .Take(10)
+    .Select(c => c.RelativePath
+        .Replace('\\', '/')
+        .Replace(".md", ""))
+    .ToList();
+
+            if (matches.Count == 0)
+            {
+                WikiLinkPopup.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            WikiLinkList.ItemsSource = matches;
+            WikiLinkList.SelectedIndex = 0;
+
+            // Pozycjonuj popup pod kursorem
+            var rect = EditContent.GetRectFromCharacterIndex(caret);
+            // Padding EditContent to 16,12 — dodaj go do pozycji
+            WikiLinkPopup.Margin = new Thickness(rect.Left + 16, rect.Bottom + 12, 0, 0);
+            WikiLinkPopup.Visibility = Visibility.Visible;
+        }
+
+        private void EditContent_WikiKeyDown(object sender, KeyEventArgs e)
+        {
+            if (WikiLinkPopup.Visibility != Visibility.Visible) return;
+
+            switch (e.Key)
+            {
+                case Key.Down:
+                    if (WikiLinkList.SelectedIndex < WikiLinkList.Items.Count - 1)
+                        WikiLinkList.SelectedIndex++;
+                    e.Handled = true;
+                    break;
+
+                case Key.Up:
+                    if (WikiLinkList.SelectedIndex > 0)
+                        WikiLinkList.SelectedIndex--;
+                    e.Handled = true;
+                    break;
+
+                case Key.Enter:
+                    CommitWikiLink();
+                    e.Handled = true;
+                    break;
+
+                case Key.Escape:
+                    WikiLinkPopup.Visibility = Visibility.Collapsed;
+                    _wikiTriggerIndex = -1;
+                    e.Handled = true;
+                    break;
+            }
+        }
+
+        private void CommitWikiLink()
+        {
+            if (WikiLinkList.SelectedItem is not string selected) return;
+
+            string text = EditContent.Text;
+            int caret = EditContent.CaretIndex;
+
+            // Zamień od [[ do kursora na [[nazwa]]
+            int insertStart = _wikiTriggerIndex;
+            string before = text[..insertStart];
+            string after = text[caret..];
+            string inserted = $"[[{selected}]]";
+
+            EditContent.Text = before + inserted + after;
+            EditContent.CaretIndex = before.Length + inserted.Length;
+
+            WikiLinkPopup.Visibility = Visibility.Collapsed;
+            _wikiTriggerIndex = -1;
+        }
+
+        private void WikiLinkList_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            CommitWikiLink();
         }
 
         private void SaveNote()

@@ -161,63 +161,152 @@
 
                 <!-- Right: action buttons -->
                 <StackPanel Grid.Column="3"
-                            Orientation="Horizontal"
-                            Margin="8,0,8,0">
-                    <Button x:Name="SearchButton"
-                            Content="&#x1F50D;"
-                            ToolTip="Search (Ctrl+F)"
-                            FontSize="16"
-                            Width="36"
-                            Height="36"
-                            Background="Transparent"
-                            Foreground="#6C7086"
-                            BorderThickness="0"
-                            Cursor="Hand"
-                            Margin="2,0">
-                        <Button.Style>
-                            <Style TargetType="Button">
-                                <Setter Property="Background" Value="Transparent" />
-                                <Setter Property="Template">
-                                    <Setter.Value>
-                                        <ControlTemplate TargetType="Button">
-                                            <Border Background="{TemplateBinding Background}"
-                                                    CornerRadius="6">
-                                                <ContentPresenter HorizontalAlignment="Center"
-                                                                  VerticalAlignment="Center" />
-                                            </Border>
-                                        </ControlTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                                <Style.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter Property="Background" Value="#313244" />
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
+            Orientation="Horizontal"
+            Margin="8,0,8,0">
+
+                    <!-- Search container -->
+                    <Grid x:Name="SearchContainer" VerticalAlignment="Center" Margin="2,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Button x:Name="SearchButton"
+                Grid.Column="0"
+                Content="&#x1F50D;"
+                ToolTip="Search (Ctrl+F)"
+                FontSize="16"
+                Width="36"
+                Height="36"
+                Background="Transparent"
+                Foreground="#6C7086"
+                BorderThickness="0"
+                Cursor="Hand"
+                Click="SearchButton_Click">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#313244" />
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+
+                        <!-- Inline search box — pojawia się po kliknięciu -->
+                        <Border x:Name="SearchBoxContainer"
+                Grid.Column="1"
+                Background="#313244"
+                BorderBrush="#45475A"
+                BorderThickness="1"
+                CornerRadius="6"
+                Visibility="Collapsed"
+                Width="220"
+                Height="30"
+                Margin="4,0,0,0">
+                            <TextBox x:Name="SearchBox"
+                     Background="Transparent"
+                     Foreground="#CDD6F4"
+                     BorderThickness="0"
+                     CaretBrush="#CDD6F4"
+                     FontSize="13"
+                     Padding="8,0"
+                     VerticalContentAlignment="Center"
+                     Text=""
+                     TextChanged="SearchBox_TextChanged"
+                     KeyDown="SearchBox_KeyDown" />
+                        </Border>
+                    </Grid>
+
+                    <!-- Search results popup -->
+                    <Popup x:Name="SearchPopup"
+           PlacementTarget="{Binding ElementName=SearchBoxContainer}"
+           Placement="Bottom"
+           StaysOpen="False"
+           AllowsTransparency="True"
+           Closed="SearchPopup_Closed">
+                        <Border Background="#313244"
+                BorderBrush="#45475A"
+                BorderThickness="1"
+                CornerRadius="6"
+                MinWidth="260"
+                MaxWidth="380">
+                            <ScrollViewer MaxHeight="280"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                                <ListBox x:Name="SearchResultsList"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         Foreground="#CDD6F4"
+                         FontSize="13"
+                         Focusable="False"
+                         MouseLeftButtonUp="SearchResultsList_MouseLeftButtonUp">
+                                    <ListBox.ItemContainerStyle>
+                                        <Style TargetType="ListBoxItem">
+                                            <Setter Property="Padding" Value="10,6"/>
+                                            <Setter Property="Background" Value="Transparent"/>
+                                            <Setter Property="Foreground" Value="#CDD6F4"/>
+                                            <Setter Property="BorderThickness" Value="0"/>
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#45475A"/>
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter Property="Background" Value="#45475A"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ListBox.ItemContainerStyle>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding DisplayName}"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Foreground="#CDD6F4"/>
+                                                <TextBlock Text="{Binding RelativePath}"
+                                           FontSize="10"
+                                           Foreground="#6C7086"
+                                           Margin="0,1,0,0"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </ScrollViewer>
+                        </Border>
+                    </Popup>
 
                     <ToggleButton x:Name="ConnectionsToggle"
-                                  Content="&#x1F517;"
-                                  ToolTip="Toggle connections"
-                                  FontSize="16"
-                                  Width="36"
-                                  Height="36"
-                                  Background="Transparent"
-                                  Foreground="#6C7086"
-                                  BorderThickness="0"
-                                  Cursor="Hand"
-                                  Margin="2,0">
+                  Content="&#x1F517;"
+                  ToolTip="Toggle connections"
+                  FontSize="16"
+                  Width="36" Height="36"
+                  Background="Transparent"
+                  Foreground="#6C7086"
+                  BorderThickness="0"
+                  Cursor="Hand"
+                  Margin="2,0"
+                  Visibility="Collapsed">
                         <ToggleButton.Style>
                             <Style TargetType="ToggleButton">
                                 <Setter Property="Background" Value="Transparent" />
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="ToggleButton">
-                                            <Border Background="{TemplateBinding Background}"
-                                                    CornerRadius="6">
-                                                <ContentPresenter HorizontalAlignment="Center"
-                                                                  VerticalAlignment="Center" />
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                             </Border>
                                         </ControlTemplate>
                                     </Setter.Value>
@@ -236,27 +325,24 @@
                     </ToggleButton>
 
                     <Button x:Name="SettingsButton"
-                            Content="&#x2699;&#xFE0F;"
-                            ToolTip="Settings (Ctrl+,)"
-                            FontSize="18"
-                            Click="SettingsButton_Click"
-                            Width="36"
-                            Height="36"
-                            Background="Transparent"
-                            Foreground="#6C7086"
-                            BorderThickness="0"
-                            Cursor="Hand"
-                            Margin="2,0">
+            Content="&#x2699;&#xFE0F;"
+            ToolTip="Settings (Ctrl+,)"
+            FontSize="18"
+            Click="SettingsButton_Click"
+            Width="36" Height="36"
+            Background="Transparent"
+            Foreground="#6C7086"
+            BorderThickness="0"
+            Cursor="Hand"
+            Margin="2,0">
                         <Button.Style>
                             <Style TargetType="Button">
                                 <Setter Property="Background" Value="Transparent" />
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="Button">
-                                            <Border Background="{TemplateBinding Background}"
-                                                    CornerRadius="6">
-                                                <ContentPresenter HorizontalAlignment="Center"
-                                                                  VerticalAlignment="Center" />
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                             </Border>
                                         </ControlTemplate>
                                     </Setter.Value>

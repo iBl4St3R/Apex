@@ -109,6 +109,11 @@ namespace Apex.Views
                 // Look up category from card data
                 var card = _project.Cards.FirstOrDefault(c =>
                     string.Equals(c.RelativePath, relativePath, StringComparison.OrdinalIgnoreCase));
+
+
+                fileNode.HasCategory = false;
+                fileNode.MissingCard = card == null; // nowa właściwość
+
                 if (card != null && !string.IsNullOrEmpty(card.CategoryId))
                 {
                     var category = _project.Categories.FirstOrDefault(cat =>
@@ -311,8 +316,20 @@ namespace Apex.Views
             string title = dialog.Answer.Trim();
             string relativePath = string.IsNullOrEmpty(folder) ? title + ".md" : folder + "/" + title + ".md";
 
+
+
             try
             {
+                string fullCheckPath = FileService.GetFullPath(_project.RootFolder, relativePath);
+                if (File.Exists(fullCheckPath))
+                {
+                    System.Windows.MessageBox.Show(
+                        $"A note named \"{title}.md\" already exists in this folder.",
+                        "Duplicate Name", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+
                 FileService.CreateNoteFile(_project, relativePath);
 
                 // Add a card at position 0,0
@@ -386,33 +403,81 @@ namespace Apex.Views
             {
                 if (item.IsFolder)
                 {
-                    // Rename folder — tricky because all children paths change.
-                    // For now, we just show a simplified rename by creating a new folder
-                    // and let the user handle file moves manually.
-                    System.Windows.MessageBox.Show(
-                        "Folder rename will move all contained files. This is not yet implemented.\n" +
-                        "Please rename the folder in Windows Explorer.",
-                        "Not Implemented",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Information);
-                    return;
+                    string oldFolderFullPath = FileService.GetFullPath(_project.RootFolder, item.RelativePath);
+                    string? parentPath = Path.GetDirectoryName(item.RelativePath.TrimEnd('/'))?.Replace('\\', '/');
+                    string newRel = string.IsNullOrEmpty(parentPath)
+                        ? newName
+                        : parentPath + "/" + newName;
+                    string newFolderFullPath = FileService.GetFullPath(_project.RootFolder, newRel);
+
+                    // Edge case: nowa nazwa to ta sama nazwa (case-insensitive ale inny case)
+                    bool samePathDifferentCase = string.Equals(
+                        oldFolderFullPath, newFolderFullPath, StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(oldFolderFullPath, newFolderFullPath, StringComparison.Ordinal);
+
+                    // Edge case: folder o tej nazwie już istnieje
+                    if (!samePathDifferentCase && Directory.Exists(newFolderFullPath))
+                    {
+                        System.Windows.MessageBox.Show(
+                            $"A folder named \"{newName}\" already exists in this location.",
+                            "Cannot Rename",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
+                        return;
+                    }
+
+                    try
+                    {
+                        // Na Windows rename przez Move (obsługuje zmianę case przez temp)
+                        if (samePathDifferentCase)
+                        {
+                            string tempPath = newFolderFullPath + "_apex_tmp_" + Guid.NewGuid().ToString("N")[..6];
+                            Microsoft.VisualBasic.FileIO.FileSystem.MoveDirectory(oldFolderFullPath, tempPath);
+                            Microsoft.VisualBasic.FileIO.FileSystem.MoveDirectory(tempPath, newFolderFullPath);
+                        }
+                        else
+                        {
+                            Microsoft.VisualBasic.FileIO.FileSystem.MoveDirectory(oldFolderFullPath, newFolderFullPath);
+                        }
+
+                        // Zaktualizuj wszystkie karty których ścieżka zaczyna się od starego folderu
+                        string oldPrefix = item.RelativePath.TrimEnd('/', '\\').Replace('\\', '/') + "/";
+                        string newPrefix = newRel.TrimEnd('/', '\\').Replace('\\', '/') + "/";
+
+                        foreach (var card in _project.Cards)
+                        {
+                            string normalizedPath = card.RelativePath.Replace('\\', '/');
+                            if (normalizedPath.StartsWith(oldPrefix, StringComparison.OrdinalIgnoreCase))
+                                card.RelativePath = newPrefix + normalizedPath[oldPrefix.Length..];
+                        }
+
+                        FileService.SaveProject(_project);
+                        LoadProject(_project);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Windows.MessageBox.Show(
+                            $"Failed to rename folder:\n{ex.Message}",
+                            "Error",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Error);
+                    }
+                    return; // nie wpadaj w blok file rename poniżej
                 }
 
                 string ext = ".md";
                 string parent = Path.GetDirectoryName(item.RelativePath)?.Replace('\\', '/') ?? "";
-                string newRel = string.IsNullOrEmpty(parent) ? newName + ext : parent + "/" + newName + ext;
-
-                FileService.RenameNoteFile(_project, item.RelativePath, newRel);
+                string newFileRel = string.IsNullOrEmpty(parent) ? newName + ext : parent + "/" + newName + ext;
+                FileService.RenameNoteFile(_project, item.RelativePath, newFileRel);
                 LoadProject(_project);
                 FileService.SaveProject(_project);
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show(
-                    $"Failed to rename:\n{ex.Message}",
-                    "Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
+                string msg = ex.HResult == unchecked((int)0x80070005)
+                    ? $"Cannot rename \"{currentName}\" — close File Explorer and try again."
+                    : $"Failed to rename folder:\n{ex.Message}";
+                System.Windows.MessageBox.Show(msg, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -527,6 +592,27 @@ namespace Apex.Views
             catch { }
             return new SolidColorBrush(Color.FromRgb(136, 136, 136));
         }
+
+
+        private void CtxCreateCard_Click(object sender, RoutedEventArgs e)
+        {
+            var item = GetContextItem(sender);
+            if (item == null || item.IsFolder) return;
+
+            // Znajdź wolną pozycję na boardzie (prosta siatka)
+            double x = 100 + (_project.Cards.Count % 5) * 260;
+            double y = 100 + (_project.Cards.Count / 5) * 160;
+
+            var card = new NoteCard(item.RelativePath, x, y);
+            _project.Cards.Add(card);
+            FileService.SaveProject(_project);
+
+            // Odśwież tree żeby warning zniknął
+            LoadProject(_project);
+
+            // Przenieś na board i pokaż kartę
+            FindOnBoard?.Invoke(item.RelativePath);
+        }
     }
 
     /// <summary>
@@ -546,6 +632,8 @@ namespace Apex.Views
         public string CategoryName { get; set; } = string.Empty;
         public Brush CategoryColor { get; set; } = new SolidColorBrush(Color.FromRgb(136, 136, 136));
         public System.Collections.ObjectModel.ObservableCollection<FileTreeItem> Children { get; set; } = new();
+
+        public bool MissingCard { get; set; }
 
         public bool IsSelected
         {

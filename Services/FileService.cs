@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text.Json;
 using Apex.Models;
 
@@ -158,10 +158,13 @@ public static class FileService
 
         // Update the card reference in the project
         var card = project.Cards.FirstOrDefault(c =>
-            string.Equals(c.RelativePath, oldRelativePath, StringComparison.OrdinalIgnoreCase));
+    string.Equals(
+        c.RelativePath.Replace('\\', '/'),
+        oldRelativePath.Replace('\\', '/'),
+        StringComparison.OrdinalIgnoreCase));
         if (card != null)
         {
-            card.RelativePath = newRelativePath;
+            card.RelativePath = newRelativePath.Replace('\\', '/');
             SaveProject(project);
         }
     }
@@ -311,11 +314,12 @@ public static class FileService
     /// </summary>
     public static string GetRelativePath(string rootFolder, string fullPath)
     {
-        string normalizedRoot = Path.GetFullPath(rootFolder).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        string normalizedRoot = Path.GetFullPath(rootFolder).TrimEnd(Path.DirectorySeparatorChar)
+                                + Path.DirectorySeparatorChar;
         string normalizedFull = Path.GetFullPath(fullPath);
         return normalizedFull.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase)
-            ? normalizedFull[normalizedRoot.Length..]
-            : fullPath;
+            ? normalizedFull[normalizedRoot.Length..].Replace('\\', '/')  // ← dodaj to
+            : fullPath.Replace('\\', '/');
     }
 }
 

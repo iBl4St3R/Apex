@@ -65,6 +65,9 @@ namespace Apex.Views
         private const double CardMaxWidth = 880 * 4;  // 4× large
         private const double CardMaxHeight = 320 * 4;
 
+        private bool _connectionsVisible = false;
+        private readonly List<UIElement> _connectionLines = new();
+
 
         public BoardView()
         {
@@ -200,9 +203,15 @@ namespace Apex.Views
                 PanTransform.Y = vph / 2 - (card.BoardY + cardHeight / 2) * _zoomLevel;
 
                 // Flash the card border white
+                // Flash the card border white
                 if (cardElement != null)
                 {
-                    var originalBrush = cardElement.BorderBrush;
+                    // Zapamiętaj oryginalny kolor zależny od stanu locked
+                    var originalBrush = card.Locked
+                        ? new SolidColorBrush(Color.FromRgb(98, 79, 120))
+                        : new SolidColorBrush(Color.FromRgb(49, 50, 68));
+                    var originalThickness = new Thickness(1);
+
                     cardElement.BorderBrush = new SolidColorBrush(Colors.White);
                     cardElement.BorderThickness = new Thickness(2);
 
@@ -213,7 +222,7 @@ namespace Apex.Views
                     timer.Tick += (_, _) =>
                     {
                         cardElement.BorderBrush = originalBrush;
-                        cardElement.BorderThickness = new Thickness(1);
+                        cardElement.BorderThickness = originalThickness;
                         timer.Stop();
                     };
                     timer.Start();
@@ -228,6 +237,7 @@ namespace Apex.Views
         private void RenderCards()
         {
             BoardCanvas.Children.Clear();
+            _connectionLines.Clear();
             if (Project == null) return;
 
             foreach (var card in Project.Cards)
@@ -237,6 +247,10 @@ namespace Apex.Views
                 Canvas.SetLeft(element, card.BoardX);
                 Canvas.SetTop(element, card.BoardY);
             }
+
+            // Linie rysuj po kartach żeby mieć ActualWidth (defer do layout pass)
+            Dispatcher.BeginInvoke(new Action(RenderConnections),
+                System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
         // ──────────────────────────────────────────────
@@ -295,14 +309,16 @@ namespace Apex.Views
             // Outer card border
             var cardBorder = new Border
             {
-                Width = cardWidth,   
+                Width = cardWidth,
                 Height = cardHeight,
                 ClipToBounds = true,
                 Background = new SolidColorBrush(Color.FromRgb(30, 30, 46)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(49, 50, 68)),
+                BorderBrush = card.Locked
+        ? new SolidColorBrush(Color.FromRgb(98, 79, 120))   // lekko fioletowe gdy locked
+        : new SolidColorBrush(Color.FromRgb(49, 50, 68)),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(8),
-                Cursor = Cursors.Hand,
+                Cursor = card.Locked ? Cursors.Arrow : Cursors.Hand,
                 Tag = card,
                 Focusable = false
             };
@@ -329,8 +345,13 @@ namespace Apex.Views
 
             // — Row 0: title + category badge —
             var titleRow = new Grid();
-            titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            titleRow.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });    // tytuł + badge
+            titleRow.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });    // ścieżka folderu
+
+            // Wiersz 0,0: tytuł + badge obok siebie
+            var titleAndBadgeRow = new Grid();
+            titleAndBadgeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            titleAndBadgeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var titleBlock = new TextBlock
             {
@@ -342,27 +363,46 @@ namespace Apex.Views
                 VerticalAlignment = VerticalAlignment.Center
             };
             Grid.SetColumn(titleBlock, 0);
-            titleRow.Children.Add(titleBlock);
+            titleAndBadgeRow.Children.Add(titleBlock);
 
             if (catName != null)
             {
                 var badge = new Border
                 {
                     Background = stripBrush,
-                    CornerRadius = new CornerRadius(3),
-                    Padding = new Thickness(4, 1, 4, 1),
-                    Margin = new Thickness(4, 0, 0, 0),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 2, 6, 2),
+                    Margin = new Thickness(6, 0, 0, 0),
                     VerticalAlignment = VerticalAlignment.Center,
                     Child = new TextBlock
                     {
                         Text = catName,
-                        FontSize = 10,
+                        FontSize = 11,
                         Foreground = Brushes.White,
                         FontWeight = FontWeights.SemiBold
                     }
                 };
                 Grid.SetColumn(badge, 1);
-                titleRow.Children.Add(badge);
+                titleAndBadgeRow.Children.Add(badge);
+            }
+
+            Grid.SetRow(titleAndBadgeRow, 0);
+            titleRow.Children.Add(titleAndBadgeRow);
+
+            // Wiersz 0,1: ścieżka folderu (tylko jeśli plik jest w podfolderze)
+            string? folderPath = Path.GetDirectoryName(card.RelativePath)?.Replace('\\', '/');
+            if (!string.IsNullOrEmpty(folderPath))
+            {
+                var folderLabel = new TextBlock
+                {
+                    Text = folderPath + "/",
+                    FontSize = 9,                    // mniejsza
+                    Foreground = new SolidColorBrush(Color.FromRgb(69, 71, 90)),  // ciemniejszy szary
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    Margin = new Thickness(0, 1, 0, 0)
+                };
+                Grid.SetRow(folderLabel, 1);
+                titleRow.Children.Add(folderLabel);
             }
 
             Grid.SetRow(titleRow, 0);
@@ -371,13 +411,70 @@ namespace Apex.Views
             double previewMaxHeight = (card.CustomHeight.HasValue || card.CardSize is "large" or "medium")
                                     ? double.PositiveInfinity
                                     : 64;
-            var previewBlock = BuildPreviewTextBlock(previewText, previewMaxHeight);
+            var previewBlock = BuildPreviewTextBlock(
+    previewText,
+    previewMaxHeight,
+    linkTarget =>
+    {
+        if (Project == null) return;
+        var target = Project.Cards.FirstOrDefault(c =>
+            string.Equals(
+                Path.GetFileNameWithoutExtension(c.RelativePath),
+                linkTarget,
+                StringComparison.OrdinalIgnoreCase));
+        if (target != null)
+            FocusCard(target.RelativePath);
+    },
+    linkTarget => Project?.Cards.Any(c =>        // ← to jest nowy linkExists
+        string.Equals(
+            Path.GetFileNameWithoutExtension(c.RelativePath),
+            linkTarget,
+            StringComparison.OrdinalIgnoreCase)) == true
+);
+
+
             Grid.SetRow(previewBlock, 1);
             innerGrid.Children.Add(previewBlock);
 
-            
 
-            // — Row 2: date (przyciśnięta do dołu) —
+
+            // — Row 2: date + lock button —
+            var bottomRow = new Grid();
+            bottomRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // pusty spacer
+            bottomRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // kłódka
+            bottomRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // data
+
+            var lockIcon = new TextBlock
+            {
+                Text = card.Locked ? "🔒" : "🔓",
+                FontSize = 12,
+                Cursor = Cursors.Hand,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 4, 0),
+                ToolTip = card.Locked ? "Unlock card" : "Lock card"
+            };
+
+            lockIcon.MouseLeftButtonDown += (_, e) => e.Handled = true;
+            lockIcon.MouseLeftButtonUp += (_, e) =>
+            {
+                card.Locked = !card.Locked;
+
+                Border? current = BoardCanvas.Children
+                    .OfType<Border>()
+                    .FirstOrDefault(b => b.Tag == card);
+
+                if (current != null)
+                    ReplaceCardElement(card, current);
+
+                if (Project != null)
+                    FileService.SaveProject(Project);
+
+                e.Handled = true;
+            };
+
+            Grid.SetColumn(lockIcon, 1);
+            bottomRow.Children.Add(lockIcon);
+
             if (!string.IsNullOrEmpty(modifiedDateTime))
             {
                 var dateBlock = new TextBlock
@@ -386,12 +483,13 @@ namespace Apex.Views
                     FontSize = 10,
                     Foreground = new SolidColorBrush(Color.FromRgb(88, 91, 112)),
                     VerticalAlignment = VerticalAlignment.Bottom,
-                    HorizontalAlignment = HorizontalAlignment.Right,
-                    Margin = new Thickness(0, 2, 0, 0)
                 };
-                Grid.SetRow(dateBlock, 2);
-                innerGrid.Children.Add(dateBlock);
+                Grid.SetColumn(dateBlock, 2);
+                bottomRow.Children.Add(dateBlock);
             }
+
+            Grid.SetRow(bottomRow, 2);
+            innerGrid.Children.Add(bottomRow);
 
             Grid.SetColumn(innerGrid, 1);
             outerGrid.Children.Add(innerGrid);
@@ -404,8 +502,13 @@ namespace Apex.Views
             cardBorder.MouseLeave += Card_ResizeMouseLeave;
             cardBorder.ContextMenu = BuildCardContextMenu(card, cardBorder);
 
+
+
+
             return cardBorder;
         }
+
+
 
         // ──────────────────────────────────────────────
         //  Card drag
@@ -415,7 +518,8 @@ namespace Apex.Views
         {
             if (sender is Border border && border.Tag is NoteCard card)
             {
-                // Sprawdź czy to resize
+                if (card.Locked) return;   // ← dodaj
+
                 Point local = e.GetPosition(border);
                 if (GetResizeEdge(border, local) != ResizeEdge.None)
                 {
@@ -539,7 +643,11 @@ namespace Apex.Views
         /// Supports: headings (bold+slightly larger), **bold**, *italic*, plain lines.
         /// No FlowDocument overhead — safe for 20+ cards.
         /// </summary>
-        private static TextBlock BuildPreviewTextBlock(string text, double maxHeight)
+        private static TextBlock BuildPreviewTextBlock(
+    string text,
+    double maxHeight,
+    Action<string>? onLinkClicked = null,
+    Func<string, bool>? linkExists = null)
         {
             var tb = new TextBlock
             {
@@ -586,42 +694,94 @@ namespace Apex.Views
                 }
 
                 // Linia z bold/italic — parsuj inline
-                AddInlineFormattedRuns(tb.Inlines, line);
+                AddInlineFormattedRuns(tb.Inlines, line, onLinkClicked, linkExists);  // ← dodaj linkExists
             }
 
             return tb;
         }
 
         private static void AddInlineFormattedRuns(
-    System.Windows.Documents.InlineCollection inlines, string line)
+    System.Windows.Documents.InlineCollection inlines,
+    string line,
+    Action<string>? onLinkClicked = null,
+    Func<string, bool>? linkExists = null)  
         {
-            // Prosta maszyna stanów dla **bold** i *italic*
+            // Najpierw rozbij linię na segmenty po markerach wiki-linków
+            var markerPattern = new System.Text.RegularExpressions.Regex(@"apex_link§([^§]+)§");
+            int lastIndex = 0;
+
+            foreach (System.Text.RegularExpressions.Match wm in markerPattern.Matches(line))
+            {
+                // Tekst przed markerem — parsuj bold/italic normalnie
+                if (wm.Index > lastIndex)
+                    AddFormattedSegment(inlines, line[lastIndex..wm.Index]);
+
+                // Wiki-link jako klikalny Hyperlink
+                string linkTarget = wm.Groups[1].Value;
+                bool exists = linkExists == null || linkExists(linkTarget);
+
+                if (exists)
+                {
+                    var hyperlink = new System.Windows.Documents.Hyperlink
+                    {
+                        Foreground = new SolidColorBrush(Color.FromRgb(137, 180, 250)),
+                        TextDecorations = System.Windows.TextDecorations.Underline,
+                        Cursor = Cursors.Hand,
+                        ToolTip = $"Przejdź do: \"{linkTarget}\""
+                    };
+                    hyperlink.Inlines.Add(new System.Windows.Documents.Run(linkTarget)
+                    {
+                        FontSize = 11
+                    });
+                    if (onLinkClicked != null)
+                        hyperlink.Click += (_, e) => { onLinkClicked(linkTarget); e.Handled = true; };
+                    inlines.Add(hyperlink);
+                }
+                else
+                {
+                    // Karta nie istnieje — renderuj jako zwykły tekst, bez hiperlinku
+                    inlines.Add(new System.Windows.Documents.Run(linkTarget)
+                    {
+                        FontSize = 11,
+                        Foreground = new SolidColorBrush(Color.FromRgb(108, 112, 134))
+                    });
+                }
+
+                lastIndex = wm.Index + wm.Length;
+            }
+
+            if (lastIndex < line.Length)
+                AddFormattedSegment(inlines, line[lastIndex..]);
+        }
+
+        private static void AddFormattedSegment(
+    System.Windows.Documents.InlineCollection inlines, string text)
+        {
             var pattern = new System.Text.RegularExpressions.Regex(
                 @"(\*\*(.+?)\*\*)|(\*(.+?)\*)|(`(.+?)`)");
 
             int lastIndex = 0;
-            foreach (System.Text.RegularExpressions.Match m in pattern.Matches(line))
+            foreach (System.Text.RegularExpressions.Match m in pattern.Matches(text))
             {
-                // Tekst przed dopasowaniem
                 if (m.Index > lastIndex)
-                    inlines.Add(new System.Windows.Documents.Run(line[lastIndex..m.Index])
+                    inlines.Add(new System.Windows.Documents.Run(text[lastIndex..m.Index])
                     {
                         Foreground = new SolidColorBrush(Color.FromRgb(108, 112, 134))
                     });
 
-                if (m.Groups[1].Success) // **bold**
+                if (m.Groups[1].Success)
                     inlines.Add(new System.Windows.Documents.Run(m.Groups[2].Value)
                     {
                         FontWeight = FontWeights.Bold,
                         Foreground = new SolidColorBrush(Color.FromRgb(180, 194, 222))
                     });
-                else if (m.Groups[3].Success) // *italic*
+                else if (m.Groups[3].Success)
                     inlines.Add(new System.Windows.Documents.Run(m.Groups[4].Value)
                     {
                         FontStyle = FontStyles.Italic,
                         Foreground = new SolidColorBrush(Color.FromRgb(147, 163, 200))
                     });
-                else if (m.Groups[5].Success) // `code`
+                else if (m.Groups[5].Success)
                     inlines.Add(new System.Windows.Documents.Run(m.Groups[6].Value)
                     {
                         FontFamily = new FontFamily("Consolas"),
@@ -632,13 +792,14 @@ namespace Apex.Views
                 lastIndex = m.Index + m.Length;
             }
 
-            // Reszta linii po ostatnim dopasowaniu
-            if (lastIndex < line.Length)
-                inlines.Add(new System.Windows.Documents.Run(line[lastIndex..])
+            if (lastIndex < text.Length)
+                inlines.Add(new System.Windows.Documents.Run(text[lastIndex..])
                 {
                     Foreground = new SolidColorBrush(Color.FromRgb(108, 112, 134))
                 });
         }
+
+
 
         private static ResizeEdge GetResizeEdge(Border card, Point localPoint)
         {
@@ -682,7 +843,7 @@ namespace Apex.Views
         private void Card_ResizeMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             if (sender is not Border border || border.Tag is not NoteCard card) return;
-
+            if (card.Locked) return;   // ← dodaj
             Point local = e.GetPosition(border);
             var edge = GetResizeEdge(border, local);
             if (edge == ResizeEdge.None) return;
@@ -748,6 +909,7 @@ namespace Apex.Views
         //    }
         //    return null;
         //}
+
 
 
 
@@ -1076,7 +1238,31 @@ namespace Apex.Views
                 return;
 
             string title = dialog.Answer.Trim();
+
+            // Sanitize — usuń znaki niedozwolone w nazwach plików
+            foreach (char c in Path.GetInvalidFileNameChars())
+                title = title.Replace(c.ToString(), "");
+
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                System.Windows.MessageBox.Show(
+                    "Title contains invalid characters.",
+                    "Invalid Title", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
             string relativePath = title + ".md";
+            string fullPath = FileService.GetFullPath(Project.RootFolder, relativePath);
+
+            // Guard — duplikat w root folderze
+            if (File.Exists(fullPath))
+            {
+                System.Windows.MessageBox.Show(
+                    $"A note named \"{title}.md\" already exists in this folder.\n" +
+                    "Please choose a different name.",
+                    "Duplicate Name", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
             try
             {
@@ -1095,9 +1281,7 @@ namespace Apex.Views
             {
                 System.Windows.MessageBox.Show(
                     $"Failed to create note:\n{ex.Message}",
-                    "Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
+                    "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -1142,6 +1326,97 @@ namespace Apex.Views
             }
             catch { }
             return new SolidColorBrush(Color.FromRgb(136, 136, 136));
+        }
+
+
+        private void RenderConnections()
+        {
+            // Usuń stare linie
+            foreach (var line in _connectionLines)
+                BoardCanvas.Children.Remove(line);
+            _connectionLines.Clear();
+
+            if (!_connectionsVisible || Project == null) return;
+
+            var connections = ConnectionResolver.ResolveAll(Project);
+
+            // Mapa card → element na canvas
+            var cardElements = new Dictionary<string, Border>(StringComparer.OrdinalIgnoreCase);
+            foreach (var child in BoardCanvas.Children.OfType<Border>())
+            {
+                if (child.Tag is NoteCard nc)
+                    cardElements[nc.RelativePath] = child;
+            }
+
+            foreach (var (source, target) in connections)
+            {
+                if (!cardElements.TryGetValue(source.RelativePath, out var srcEl)) continue;
+                if (!cardElements.TryGetValue(target.RelativePath, out var tgtEl)) continue;
+
+                double srcW = srcEl.ActualWidth > 0 ? srcEl.ActualWidth : (source.CustomWidth ?? 220);
+                double srcH = srcEl.ActualHeight > 0 ? srcEl.ActualHeight : (source.CustomHeight ?? 120);
+                double tgtW = tgtEl.ActualWidth > 0 ? tgtEl.ActualWidth : (target.CustomWidth ?? 220);
+                double tgtH = tgtEl.ActualHeight > 0 ? tgtEl.ActualHeight : (target.CustomHeight ?? 120);
+
+                // Środek kart
+                double x1 = source.BoardX + srcW / 2;
+                double y1 = source.BoardY + srcH / 2;
+                double x2 = target.BoardX + tgtW / 2;
+                double y2 = target.BoardY + tgtH / 2;
+
+                var line = new System.Windows.Shapes.Line
+                {
+                    X1 = x1,
+                    Y1 = y1,
+                    X2 = x2,
+                    Y2 = y2,
+                    Stroke = new SolidColorBrush(Color.FromArgb(120, 137, 180, 250)),
+                    StrokeThickness = 1.5,
+                    IsHitTestVisible = false,
+                    // Linia za kartami — wstaw na początku
+                };
+
+                // Strzałka na końcu (trójkąt)
+                var arrowHead = BuildArrowHead(x1, y1, x2, y2);
+
+                // Wstaw linie NA SPÓD (przed kartami)
+                BoardCanvas.Children.Insert(0, line);
+                BoardCanvas.Children.Insert(1, arrowHead);
+                _connectionLines.Add(line);
+                _connectionLines.Add(arrowHead);
+            }
+        }
+
+        private System.Windows.Shapes.Polygon BuildArrowHead(
+    double x1, double y1, double x2, double y2)
+        {
+            double angle = Math.Atan2(y2 - y1, x2 - x1);
+            double arrowLength = 10;
+            double arrowWidth = 5;
+
+            double ax = x2 - arrowLength * Math.Cos(angle);
+            double ay = y2 - arrowLength * Math.Sin(angle);
+
+            var arrow = new System.Windows.Shapes.Polygon
+            {
+                Fill = new SolidColorBrush(Color.FromArgb(160, 137, 180, 250)),
+                IsHitTestVisible = false,
+                Points = new PointCollection
+        {
+            new Point(x2, y2),
+            new Point(ax - arrowWidth * Math.Sin(angle),
+                      ay + arrowWidth * Math.Cos(angle)),
+            new Point(ax + arrowWidth * Math.Sin(angle),
+                      ay - arrowWidth * Math.Cos(angle))
+        }
+            };
+            return arrow;
+        }
+
+        public void SetConnectionsVisible(bool visible)
+        {
+            _connectionsVisible = visible;
+            RenderConnections();
         }
 
 

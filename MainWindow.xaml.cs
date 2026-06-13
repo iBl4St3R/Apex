@@ -44,10 +44,15 @@ namespace Apex
 
             // Create view instances
             _boardView = new BoardView();
+
+
             _boardView.CardSelected += OnBoardCardSelected;
 
             _boardView.CardEditRequested += OnBoardCardEditRequested;
             _boardView.PreviewRequested += OnBoardPreviewRequested;
+
+            ConnectionsToggle.Checked += (_, _) => _boardView.SetConnectionsVisible(true);
+            ConnectionsToggle.Unchecked += (_, _) => _boardView.SetConnectionsVisible(false);
 
             _structureView = new StructureView();
             _structureView.MultipleFilesSelected += OnStructureFilesSelected;
@@ -66,6 +71,7 @@ namespace Apex
 
             SetViewMode(initialMode);
         }
+        
 
         /// <summary>
         /// Switches the left panel between Board and Structure view.
@@ -108,6 +114,9 @@ namespace Apex
             }
         }
 
+       
+
+
         private void UpdateToggleButtonStyles(ViewMode mode)
         {
             var activeBg = new System.Windows.Media.SolidColorBrush(
@@ -123,6 +132,8 @@ namespace Apex
             StructureToggle.Background = mode == ViewMode.Structure ? activeBg : inactiveBg;
             StructureToggle.Foreground = mode == ViewMode.Structure ? activeFg : inactiveFg;
         }
+
+
 
         // ──────────────────────────────────────────────
         //  Toolbar event handlers
@@ -269,15 +280,17 @@ namespace Apex
 
         private void OnLinkClicked(string linkTarget)
         {
-            if (string.IsNullOrEmpty(Project.RootFolder))
+            if (string.IsNullOrEmpty(Project?.RootFolder))
                 return;
 
             string? foundPath = FindNoteByTitle(linkTarget);
-            if (foundPath != null)
-            {
-                ShowRightPanelContent(_noteViewer);
-                _noteViewer.LoadNote(foundPath, Project);
-            }
+            if (foundPath == null) return;
+
+            string relativePath = FileService.GetRelativePath(Project.RootFolder, foundPath);
+
+            SetViewMode(ViewMode.Board);
+            _boardView.FocusBoard();
+            _boardView.FocusCard(relativePath);
         }
 
         private string? FindNoteByTitle(string title)
@@ -287,6 +300,14 @@ namespace Apex
                 var root = new DirectoryInfo(Project.RootFolder);
                 if (!root.Exists) return null;
 
+                // Jeśli title zawiera / to jest to pełna ścieżka względna
+                if (title.Contains('/') || title.Contains('\\'))
+                {
+                    string fullPath = FileService.GetFullPath(Project.RootFolder, title + ".md");
+                    return File.Exists(fullPath) ? fullPath : null;
+                }
+
+                // Tylko nazwa — szukaj po nazwie pliku
                 return root.EnumerateFiles("*.md", SearchOption.AllDirectories)
                     .FirstOrDefault(f =>
                         string.Equals(
@@ -310,9 +331,10 @@ namespace Apex
             base.OnKeyDown(e);
 
             if (e.Key == System.Windows.Input.Key.F &&
-                (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == System.Windows.Input.ModifierKeys.Control)
+    (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == System.Windows.Input.ModifierKeys.Control)
             {
-                // Ctrl+F — Search (TODO)
+                if (_searchOpen) CloseSearch();
+                else OpenSearch();
                 e.Handled = true;
             }
             else if (e.Key == System.Windows.Input.Key.OemComma &&
@@ -321,6 +343,149 @@ namespace Apex
                 // Ctrl+, — Settings (TODO)
                 e.Handled = true;
             }
+        }
+
+
+
+
+
+        // ──────────────────────────────────────────────
+        //  Search
+        // ──────────────────────────────────────────────
+
+        private bool _searchOpen = false;
+
+        private void SearchButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_searchOpen)
+                CloseSearch();
+            else
+                OpenSearch();
+        }
+
+        private void OpenSearch()
+        {
+            _searchOpen = true;
+            SearchBoxContainer.Visibility = Visibility.Visible;
+            SearchBox.Text = "";
+            SearchBox.Focus();
+            SearchResultsList.ItemsSource = null;
+            SearchPopup.IsOpen = false;
+        }
+
+        private void CloseSearch()
+        {
+            _searchOpen = false;
+            SearchBoxContainer.Visibility = Visibility.Collapsed;
+            SearchPopup.IsOpen = false;
+            SearchBox.Text = "";
+        }
+
+        private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            string query = SearchBox.Text.Trim();
+
+            if (string.IsNullOrEmpty(query))
+            {
+                SearchPopup.IsOpen = false;
+                return;
+            }
+
+            var results = Project.Cards
+                .Where(c =>
+                {
+                    string name = Path.GetFileNameWithoutExtension(c.RelativePath);
+                    string path = c.RelativePath.Replace('\\', '/');
+                    return name.Contains(query, StringComparison.OrdinalIgnoreCase)
+                        || path.Contains(query, StringComparison.OrdinalIgnoreCase);
+                })
+                .Select(c => new SearchResult
+                {
+                    DisplayName = Path.GetFileNameWithoutExtension(c.RelativePath),
+                    RelativePath = c.RelativePath.Replace('\\', '/'),
+                    Card = c
+                })
+                .OrderBy(r => r.DisplayName)
+                .Take(20)
+                .ToList();
+
+            if (results.Count == 0)
+            {
+                results.Add(new SearchResult
+                {
+                    DisplayName = "No results",
+                    RelativePath = "",
+                    Card = null
+                });
+            }
+
+            SearchResultsList.ItemsSource = results;
+            SearchPopup.IsOpen = true;
+        }
+
+        private void SearchBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Escape)
+            {
+                CloseSearch();
+                e.Handled = true;
+            }
+            else if (e.Key == System.Windows.Input.Key.Down)
+            {
+                if (SearchResultsList.Items.Count > 0)
+                {
+                    SearchResultsList.SelectedIndex = Math.Max(0,
+                        SearchResultsList.SelectedIndex < 0 ? 0 : SearchResultsList.SelectedIndex + 1);
+                }
+                e.Handled = true;
+            }
+            else if (e.Key == System.Windows.Input.Key.Enter)
+            {
+                if (SearchResultsList.SelectedItem is SearchResult r && r.Card != null)
+                    NavigateToResult(r);
+                else if (SearchResultsList.Items.Count > 0
+                         && SearchResultsList.Items[0] is SearchResult first && first.Card != null)
+                    NavigateToResult(first);
+                e.Handled = true;
+            }
+        }
+
+        private void SearchResultsList_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (SearchResultsList.SelectedItem is SearchResult r && r.Card != null)
+                NavigateToResult(r);
+        }
+
+        private void NavigateToResult(SearchResult result)
+        {
+            CloseSearch();
+
+            if (_currentMode == ViewMode.Board)
+            {
+                _boardView.FocusCard(result.Card!.RelativePath);
+            }
+            else
+            {
+                _structureView.SelectFile(result.Card!.RelativePath);
+            }
+        }
+
+        private void SearchPopup_Closed(object sender, EventArgs e)
+        {
+            // Popup zamknięty przez kliknięcie poza nim — zamknij też searchbox
+            // ale tylko jeśli focus nie wrócił do SearchBox
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (!SearchBox.IsFocused)
+                    CloseSearch();
+            }), System.Windows.Threading.DispatcherPriority.Input);
+        }
+
+        private class SearchResult
+        {
+            public string DisplayName { get; set; } = "";
+            public string RelativePath { get; set; } = "";
+            public NoteCard? Card { get; set; }
         }
     }
 }
