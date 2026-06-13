@@ -11,10 +11,6 @@ using Apex.Services;
 
 namespace Apex.Views
 {
-    /// <summary>
-    /// Interaction logic for NoteViewer.xaml
-    /// Displays the content of a .md note file in read or edit mode.
-    /// </summary>
     public partial class NoteViewer : UserControl
     {
         private ApexProject? _project;
@@ -22,13 +18,12 @@ namespace Apex.Views
         private string? _currentRelativePath;
         private string? _savedContent;
         private FileSystemWatcher? _watcher;
+        private int _wikiTriggerIndex = -1;
 
-        private int _wikiTriggerIndex = -1; // pozycja [[ w tekście
+        // Template state
+        private NoteTemplate? _currentTemplate;
+        private bool _templateBarChanging = false;
 
-        /// <summary>
-        /// Fires when the user clicks a wiki [[link]] inside the note.
-        /// Argument is the link target (e.g., "Character" from [[Character]]).
-        /// </summary>
         public event Action<string>? LinkClicked;
 
         public NoteViewer()
@@ -40,9 +35,6 @@ namespace Apex.Views
         //  Public API
         // ──────────────────────────────────────────────
 
-        /// <summary>
-        /// Loads a .md file into the viewer, renders it in read mode.
-        /// </summary>
         public void LoadNote(string fullPath, ApexProject project)
         {
             _project = project;
@@ -60,43 +52,113 @@ namespace Apex.Views
             }
 
             string markdown = File.ReadAllText(fullPath);
-
-            // Store for edit-mode revert
             _savedContent = markdown;
-
-            // Render the markdown
             RenderMarkdown(markdown);
-
-            // Update toolbar
             UpdateToolbar();
-
-            // Start watching the file for external changes
+            UpdateTemplateBar();
             StartWatcher();
         }
 
-        /// <summary>
-        /// Switches to edit mode, showing the raw markdown in a text editor.
-        /// </summary>
         public void EnterEditMode()
         {
-            if (_currentFilePath == null || _savedContent == null)
-                return;
-
-            // Hide external banner when entering edit mode
+            if (_currentFilePath == null || _savedContent == null) return;
             ExternalChangeBanner.Visibility = Visibility.Collapsed;
-
             SwitchToEditMode();
         }
 
-        /// <summary>
-        /// Switches to read mode, rendering the current content.
-        /// </summary>
         public void ExitEditMode()
         {
             SwitchToReadMode();
-
             if (_savedContent != null)
                 RenderMarkdown(_savedContent);
+        }
+
+        // ──────────────────────────────────────────────
+        //  Template bar
+        // ──────────────────────────────────────────────
+
+        private void UpdateTemplateBar()
+        {
+            if (_project == null || _currentFilePath == null)
+            {
+                TemplateBar.Visibility = Visibility.Collapsed;
+                _currentTemplate = null;
+                return;
+            }
+
+            string templatesFolder = TemplateService.GetTemplatesFolder(_project.RootFolder);
+            bool isTemplate = _currentFilePath.StartsWith(
+                templatesFolder, StringComparison.OrdinalIgnoreCase);
+
+            if (!isTemplate)
+            {
+                TemplateBar.Visibility = Visibility.Collapsed;
+                _currentTemplate = null;
+                return;
+            }
+
+            TemplateBar.Visibility = Visibility.Visible;
+
+            // Load or create template meta
+            string mdFileName = Path.GetFileName(_currentFilePath);
+            _currentTemplate = TemplateService.LoadMeta(_project.RootFolder, mdFileName)
+                               ?? new NoteTemplate(
+                                   Path.GetFileNameWithoutExtension(mdFileName),
+                                   mdFileName);
+
+            // Populate category dropdown
+            _templateBarChanging = true;
+            TemplateCategory.Items.Clear();
+            TemplateCategory.Items.Add(new ComboBoxItem
+            {
+                Content = "(None)",
+                Tag = (string?)null
+            });
+            foreach (var cat in _project.Categories)
+            {
+                TemplateCategory.Items.Add(new ComboBoxItem
+                {
+                    Content = cat.Name,
+                    Tag = cat.Id,
+                    Foreground = new SolidColorBrush(
+                        ParseHexColor(cat.Color))
+                });
+            }
+
+            // Select current
+            var selected = TemplateCategory.Items.OfType<ComboBoxItem>()
+                .FirstOrDefault(i => string.Equals(
+                    i.Tag as string,
+                    _currentTemplate.DefaultCategoryId,
+                    StringComparison.OrdinalIgnoreCase));
+            TemplateCategory.SelectedItem = selected ?? TemplateCategory.Items[0];
+
+            // Folder
+            TemplateFolderBox.Text = _currentTemplate.DefaultFolder;
+            _templateBarChanging = false;
+        }
+
+        private void SaveTemplateMeta()
+        {
+            if (_project == null || _currentTemplate == null) return;
+            TemplateService.SaveMeta(_project.RootFolder, _currentTemplate);
+        }
+
+        private void TemplateCategory_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_templateBarChanging || _currentTemplate == null) return;
+            if (TemplateCategory.SelectedItem is ComboBoxItem item)
+            {
+                _currentTemplate.DefaultCategoryId = item.Tag as string;
+                SaveTemplateMeta();
+            }
+        }
+
+        private void TemplateFolderBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_templateBarChanging || _currentTemplate == null) return;
+            _currentTemplate.DefaultFolder = TemplateFolderBox.Text.Trim();
+            SaveTemplateMeta();
         }
 
         // ──────────────────────────────────────────────
@@ -105,11 +167,8 @@ namespace Apex.Views
 
         private void SwitchToReadMode()
         {
-            // Toolbar
             ReadToolbar.Visibility = Visibility.Visible;
             EditToolbar.Visibility = Visibility.Collapsed;
-
-            // Content
             ReadContent.Visibility = Visibility.Visible;
             EditContent.Visibility = Visibility.Collapsed;
 
@@ -117,25 +176,19 @@ namespace Apex.Views
             EditContent.PreviewKeyDown -= EditContent_WikiKeyDown;
             WikiLinkPopup.Visibility = Visibility.Collapsed;
 
-            // Focus the viewer (not the editor)
             ReadContent.Focus();
         }
 
         private void SwitchToEditMode()
         {
-            // Toolbar
             ReadToolbar.Visibility = Visibility.Collapsed;
             EditToolbar.Visibility = Visibility.Visible;
-
-            // Content
             ReadContent.Visibility = Visibility.Collapsed;
             EditContent.Visibility = Visibility.Visible;
 
-            // Load markdown into the text editor
             EditContent.Text = _savedContent ?? string.Empty;
             EditTitleBox.Text = GetFileNameWithoutExtension();
 
-            // Focus the editor
             EditContent.Focus();
             EditContent.CaretIndex = EditContent.Text.Length;
 
@@ -178,18 +231,15 @@ namespace Apex.Views
 
         private void UpdateToolbar()
         {
-            if (_currentFilePath == null)
-                return;
+            if (_currentFilePath == null) return;
 
-            // Title
-            string title = GetFileNameWithoutExtension();
-            NoteTitle.Text = title;
+            NoteTitle.Text = GetFileNameWithoutExtension();
 
-            // Category badge
             if (_project != null && _currentRelativePath != null)
             {
                 var card = _project.Cards.FirstOrDefault(c =>
-                    string.Equals(c.RelativePath, _currentRelativePath, StringComparison.OrdinalIgnoreCase));
+                    string.Equals(c.RelativePath, _currentRelativePath,
+                        StringComparison.OrdinalIgnoreCase));
                 if (card != null && !string.IsNullOrEmpty(card.CategoryId))
                 {
                     var category = _project.Categories.FirstOrDefault(cat =>
@@ -200,18 +250,11 @@ namespace Apex.Views
                         CategoryBadge.Background = ParseHexBrush(category.Color);
                         CategoryNameText.Text = category.Name;
                     }
-                    else
-                    {
-                        CategoryBadge.Visibility = Visibility.Collapsed;
-                    }
+                    else CategoryBadge.Visibility = Visibility.Collapsed;
                 }
-                else
-                {
-                    CategoryBadge.Visibility = Visibility.Collapsed;
-                }
+                else CategoryBadge.Visibility = Visibility.Collapsed;
             }
 
-            // Dates
             try
             {
                 var fileInfo = new FileInfo(_currentFilePath);
@@ -226,30 +269,15 @@ namespace Apex.Views
         }
 
         // ──────────────────────────────────────────────
-        //  Button handlers (read mode)
+        //  Button handlers
         // ──────────────────────────────────────────────
 
-        private void EditButton_Click(object sender, RoutedEventArgs e)
-        {
-            EnterEditMode();
-        }
+        private void EditButton_Click(object sender, RoutedEventArgs e) => EnterEditMode();
+        private void SaveButton_Click(object sender, RoutedEventArgs e) => SaveNote();
+        private void CancelButton_Click(object sender, RoutedEventArgs e) => CancelEdit();
 
         // ──────────────────────────────────────────────
-        //  Button handlers (edit mode)
-        // ──────────────────────────────────────────────
-
-        private void SaveButton_Click(object sender, RoutedEventArgs e)
-        {
-            SaveNote();
-        }
-
-        private void CancelButton_Click(object sender, RoutedEventArgs e)
-        {
-            CancelEdit();
-        }
-
-        // ──────────────────────────────────────────────
-        //  Wiki-link autocomplete
+        //  Wiki-link autocomplete (unchanged)
         // ──────────────────────────────────────────────
 
         private void EditContent_WikiTextChanged(object sender, TextChangedEventArgs e)
@@ -257,7 +285,6 @@ namespace Apex.Views
             int caret = EditContent.CaretIndex;
             string text = EditContent.Text;
 
-            // Znajdź ostatnie [[ przed kursorem (niezamknięte)
             int searchFrom = Math.Max(0, caret - 1);
             int triggerIdx = -1;
 
@@ -265,11 +292,10 @@ namespace Apex.Views
             {
                 if (text[i] == '[' && text[i - 1] == '[')
                 {
-                    // Sprawdź czy nie ma zamknięcia ]] między [[ a kursorem
                     string between = text.Substring(i + 1, caret - i - 1);
                     if (!between.Contains("]]"))
                     {
-                        triggerIdx = i - 1; // pozycja pierwszego [
+                        triggerIdx = i - 1;
                         break;
                     }
                 }
@@ -283,23 +309,17 @@ namespace Apex.Views
             }
 
             _wikiTriggerIndex = triggerIdx;
-
-            // Tekst filtra — wszystko po [[ do kursora
             string filter = text.Substring(triggerIdx + 2, caret - triggerIdx - 2);
 
-            // Znajdź pasujące pliki
             if (_project == null) return;
 
-            // Zbierz wszystkie nazwy żeby wykryć duplikaty
             var matches = _project.Cards
-    .Where(c => Path.GetFileNameWithoutExtension(c.RelativePath)
-        .Contains(filter, StringComparison.OrdinalIgnoreCase))
-    .OrderBy(c => c.RelativePath)
-    .Take(10)
-    .Select(c => c.RelativePath
-        .Replace('\\', '/')
-        .Replace(".md", ""))
-    .ToList();
+                .Where(c => Path.GetFileNameWithoutExtension(c.RelativePath)
+                    .Contains(filter, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(c => c.RelativePath)
+                .Take(10)
+                .Select(c => c.RelativePath.Replace('\\', '/').Replace(".md", ""))
+                .ToList();
 
             if (matches.Count == 0)
             {
@@ -310,9 +330,7 @@ namespace Apex.Views
             WikiLinkList.ItemsSource = matches;
             WikiLinkList.SelectedIndex = 0;
 
-            // Pozycjonuj popup pod kursorem
             var rect = EditContent.GetRectFromCharacterIndex(caret);
-            // Padding EditContent to 16,12 — dodaj go do pozycji
             WikiLinkPopup.Margin = new Thickness(rect.Left + 16, rect.Bottom + 12, 0, 0);
             WikiLinkPopup.Visibility = Visibility.Visible;
         }
@@ -328,18 +346,15 @@ namespace Apex.Views
                         WikiLinkList.SelectedIndex++;
                     e.Handled = true;
                     break;
-
                 case Key.Up:
                     if (WikiLinkList.SelectedIndex > 0)
                         WikiLinkList.SelectedIndex--;
                     e.Handled = true;
                     break;
-
                 case Key.Enter:
                     CommitWikiLink();
                     e.Handled = true;
                     break;
-
                 case Key.Escape:
                     WikiLinkPopup.Visibility = Visibility.Collapsed;
                     _wikiTriggerIndex = -1;
@@ -351,56 +366,48 @@ namespace Apex.Views
         private void CommitWikiLink()
         {
             if (WikiLinkList.SelectedItem is not string selected) return;
-
             string text = EditContent.Text;
             int caret = EditContent.CaretIndex;
-
-            // Zamień od [[ do kursora na [[nazwa]]
-            int insertStart = _wikiTriggerIndex;
-            string before = text[..insertStart];
+            string before = text[.._wikiTriggerIndex];
             string after = text[caret..];
             string inserted = $"[[{selected}]]";
-
             EditContent.Text = before + inserted + after;
             EditContent.CaretIndex = before.Length + inserted.Length;
-
             WikiLinkPopup.Visibility = Visibility.Collapsed;
             _wikiTriggerIndex = -1;
         }
 
         private void WikiLinkList_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-        {
-            CommitWikiLink();
-        }
+            => CommitWikiLink();
+
+        // ──────────────────────────────────────────────
+        //  Save / Cancel
+        // ──────────────────────────────────────────────
 
         private void SaveNote()
         {
-            if (_currentFilePath == null)
-                return;
+            if (_currentFilePath == null) return;
 
             try
             {
                 string newContent = EditContent.Text;
-
-                // Handle title rename
                 string newTitle = EditTitleBox.Text.Trim();
                 string oldTitle = GetFileNameWithoutExtension();
 
                 if (!string.IsNullOrEmpty(newTitle) &&
                     !string.Equals(newTitle, oldTitle, StringComparison.OrdinalIgnoreCase))
                 {
-                    // Rename the file
                     string? dir = Path.GetDirectoryName(_currentFilePath);
                     string newPath = Path.Combine(dir ?? string.Empty, newTitle + ".md");
 
-                    if (!string.Equals(newPath, _currentFilePath, StringComparison.OrdinalIgnoreCase))
+                    if (!string.Equals(newPath, _currentFilePath,
+                            StringComparison.OrdinalIgnoreCase))
                     {
                         if (File.Exists(newPath))
                         {
                             System.Windows.MessageBox.Show(
                                 $"A file named \"{newTitle}.md\" already exists.",
-                                "Cannot Rename",
-                                MessageBoxButton.OK,
+                                "Cannot Rename", MessageBoxButton.OK,
                                 MessageBoxImage.Warning);
                             return;
                         }
@@ -408,10 +415,9 @@ namespace Apex.Views
                         if (_project != null && _currentRelativePath != null)
                         {
                             string oldRel = _currentRelativePath;
-                            string newRel = FileService.GetRelativePath(_project.RootFolder, newPath);
-
+                            string newRel = FileService.GetRelativePath(
+                                _project.RootFolder, newPath);
                             FileService.RenameNoteFile(_project, oldRel, newRel);
-
                             _currentFilePath = newPath;
                             _currentRelativePath = newRel;
                         }
@@ -420,15 +426,26 @@ namespace Apex.Views
                             File.Move(_currentFilePath, newPath);
                             _currentFilePath = newPath;
                         }
+
+                        // If renaming a template file, update sidecar
+                        if (_currentTemplate != null && _project != null)
+                        {
+                            string oldSidecar = TemplateService.GetTemplatesFolder(
+                                _project.RootFolder) + "/" +
+                                Path.GetFileNameWithoutExtension(
+                                    _currentTemplate.MdFileName) + ".json";
+                            _currentTemplate.MdFileName = Path.GetFileName(_currentFilePath);
+                            _currentTemplate.TemplateName = newTitle;
+                            TemplateService.SaveMeta(_project.RootFolder, _currentTemplate);
+                            if (File.Exists(oldSidecar)) File.Delete(oldSidecar);
+                        }
                     }
                 }
 
-                // Write content to disk
                 File.WriteAllText(_currentFilePath, newContent);
                 _savedContent = newContent;
-
-                // Check if file was renamed; update toolbar and re-render
                 UpdateToolbar();
+                UpdateTemplateBar();
                 RenderMarkdown(newContent);
                 SwitchToReadMode();
             }
@@ -436,50 +453,37 @@ namespace Apex.Views
             {
                 System.Windows.MessageBox.Show(
                     $"Failed to save:\n{ex.Message}",
-                    "Save Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
+                    "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
         private void CancelEdit()
         {
-            // Revert to last saved content
-            if (_savedContent != null)
-                RenderMarkdown(_savedContent);
-
+            if (_savedContent != null) RenderMarkdown(_savedContent);
             UpdateToolbar();
             SwitchToReadMode();
         }
 
         // ──────────────────────────────────────────────
-        //  External file watcher
+        //  File watcher
         // ──────────────────────────────────────────────
 
         private void StartWatcher()
         {
-            if (_currentFilePath == null)
-                return;
-
+            if (_currentFilePath == null) return;
             try
             {
                 string? dir = Path.GetDirectoryName(_currentFilePath);
                 string fileName = Path.GetFileName(_currentFilePath);
-
                 if (dir == null) return;
-
                 _watcher = new FileSystemWatcher(dir, fileName)
                 {
                     NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size,
                     EnableRaisingEvents = true
                 };
-
                 _watcher.Changed += OnExternalFileChange;
             }
-            catch
-            {
-                // File watcher is best-effort
-            }
+            catch { }
         }
 
         private void StopWatcher()
@@ -496,42 +500,26 @@ namespace Apex.Views
 
         private void OnExternalFileChange(object sender, FileSystemEventArgs e)
         {
-            // Must dispatch to UI thread
             Dispatcher.Invoke(() =>
             {
                 if (EditContent.Visibility == Visibility.Visible)
-                {
-                    // In edit mode — show the banner
                     ExternalChangeBanner.Visibility = Visibility.Visible;
-                }
                 else
-                {
-                    // In read mode — reload silently
                     ReloadExternalChanges();
-                }
             });
         }
 
         private void ReloadExternalChanges()
         {
-            if (_currentFilePath == null || !File.Exists(_currentFilePath))
-                return;
-
+            if (_currentFilePath == null || !File.Exists(_currentFilePath)) return;
             try
             {
                 string content = File.ReadAllText(_currentFilePath);
                 _savedContent = content;
-
                 if (EditContent.Visibility == Visibility.Visible)
-                {
-                    // Update the editor text too
                     EditContent.Text = content;
-                }
                 else
-                {
                     RenderMarkdown(content);
-                }
-
                 UpdateToolbar();
             }
             catch { }
@@ -544,9 +532,7 @@ namespace Apex.Views
         }
 
         private void KeepMineButton_Click(object sender, RoutedEventArgs e)
-        {
-            ExternalChangeBanner.Visibility = Visibility.Collapsed;
-        }
+            => ExternalChangeBanner.Visibility = Visibility.Collapsed;
 
         // ──────────────────────────────────────────────
         //  Keyboard shortcuts
@@ -558,20 +544,17 @@ namespace Apex.Views
 
             if (!inEditMode && e.Key == Key.F2)
             {
-                // F2 — Enter edit mode
                 EnterEditMode();
                 e.Handled = true;
             }
             else if (inEditMode && e.Key == Key.S &&
                      (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
-                // Ctrl+S — Save
                 SaveNote();
                 e.Handled = true;
             }
             else if (inEditMode && e.Key == Key.Escape)
             {
-                // Esc — Cancel edit
                 CancelEdit();
                 e.Handled = true;
             }
@@ -581,12 +564,10 @@ namespace Apex.Views
         //  Helpers
         // ──────────────────────────────────────────────
 
-        private string GetFileNameWithoutExtension()
-        {
-            return _currentFilePath != null
+        private string GetFileNameWithoutExtension() =>
+            _currentFilePath != null
                 ? Path.GetFileNameWithoutExtension(_currentFilePath)
                 : string.Empty;
-        }
 
         private static Brush ParseHexBrush(string hex)
         {
@@ -603,6 +584,21 @@ namespace Apex.Views
             }
             catch { }
             return new SolidColorBrush(Color.FromRgb(136, 136, 136));
+        }
+
+        private static Color ParseHexColor(string hex)
+        {
+            try
+            {
+                hex = hex.TrimStart('#');
+                if (hex.Length == 6)
+                    return Color.FromRgb(
+                        Convert.ToByte(hex[..2], 16),
+                        Convert.ToByte(hex[2..4], 16),
+                        Convert.ToByte(hex[4..6], 16));
+            }
+            catch { }
+            return Color.FromRgb(136, 136, 136);
         }
     }
 }
