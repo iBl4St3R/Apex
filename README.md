@@ -29,7 +29,7 @@ Switch between views instantly. Both are always in sync.
 ## ✨ Features
 
 ### 📋 Board View
-- Infinite canvas with pan (drag background or middle mouse) and zoom (scroll wheel)
+- Canvas with pan (drag background or middle mouse) and zoom (scroll wheel)
 - Note cards show title, category badge, folder path, last modified date, and a live Markdown preview
 - Three card sizes: **Minimum**, **Medium**, **Large** — plus free-form resize by dragging card edges
 - Drag cards freely; positions are saved immediately to the `.apex` file
@@ -40,7 +40,7 @@ Switch between views instantly. Both are always in sync.
 - Draw **manual relations** between any two elements (notes, images, title cards) via right-click → Add relation
 - Relations are rendered as curved arrows with adjustable color and thickness
 - Drag the bend handle on each relation to reshape the curve
-- **Wiki-link connections** — if note A contains `[[B]]`, a line is automatically drawn from A to B (toggle via toolbar button)
+- **Wiki-link connections** — if note A contains `[[B]]`, it will create a warp to a B note.
 
 ### 🖼 Images & Titles on the Board
 - Paste images directly from clipboard (`Ctrl+V`) — saved automatically to `.images/` in the project folder
