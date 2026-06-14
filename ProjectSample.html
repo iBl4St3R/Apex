@@ -1,0 +1,588 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ProjectSample — Apex Export</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#1E1E2E;--bg2:#181825;--bg3:#11111B;--bg4:#313244;
+  --surface:#313244;--surface2:#45475A;--surface3:#585B70;
+  --text:#CDD6F4;--text2:#BAC2DE;--text3:#A6ADC8;--muted:#6C7086;
+  --border:#313244;--border2:#45475A;
+  --blue:#89B4FA;--purple:#CBA6F7;--green:#A6E3A1;
+  --red:#F38BA8;--yellow:#F9E2AF;--peach:#FAB387;
+  --card-w:220px;--card-h:120px;
+}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg2);color:var(--text);font-family:"Segoe UI",system-ui,sans-serif;font-size:13px}
+
+/* ── TOOLBAR ── */
+#toolbar{position:fixed;top:0;left:0;right:0;height:44px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 12px;z-index:1000}
+#toolbar h1{font-size:14px;font-weight:600;color:var(--text);margin-right:8px}
+.tb-btn{background:transparent;border:1px solid var(--border2);color:var(--text3);padding:4px 10px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600;transition:background .15s}
+.tb-btn:hover{background:var(--surface)}
+.tb-btn.active{background:var(--surface);color:var(--text)}
+
+/* ── BOARD ── */
+#board-wrap{position:fixed;top:44px;left:0;right:0;bottom:0;overflow:hidden;background:var(--bg2);cursor:grab}
+#board-wrap.panning{cursor:grabbing}
+#board{position:absolute;width:10000px;height:10000px;transform-origin:0 0}
+
+/* ── SVG OVERLAY ── */
+#svg-overlay{position:absolute;top:0;left:0;width:10000px;height:10000px;pointer-events:none;overflow:visible}
+
+/* ── NOTE CARD ── */
+.card{position:absolute;background:var(--bg);border:1px solid var(--border2);border-radius:8px;overflow:hidden;cursor:pointer;transition:box-shadow .15s;display:flex;user-select:none}
+.card:hover{box-shadow:0 0 0 2px var(--purple)}
+.card-strip{width:4px;flex-shrink:0;border-radius:8px 0 0 8px}
+.card-body{flex:1;padding:8px;min-width:0;display:flex;flex-direction:column;gap:4px}
+.card-title-row{display:flex;align-items:center;gap:6px;min-width:0}
+.card-title{font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.cat-badge{font-size:10px;font-weight:700;color:#fff;padding:2px 6px;border-radius:4px;white-space:nowrap;flex-shrink:0}
+.card-folder{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-preview{font-size:11px;color:var(--text3);line-height:1.4;overflow:hidden;flex:1;word-break:break-word}
+.card-preview h1{font-size:14px;font-weight:700;color:var(--text2);margin:2px 0}
+.card-preview h2{font-size:13px;font-weight:600;color:var(--text2);margin:2px 0}
+.card-preview h3,.card-preview h4{font-size:12px;font-weight:600;color:var(--text3);margin:1px 0}
+.card-preview p{font-size:11px;color:var(--text3);margin:2px 0;line-height:1.4}
+.card-preview ul,.card-preview ol{padding-left:14px;font-size:11px;color:var(--text3);margin:2px 0}
+.card-preview li{line-height:1.4}
+.card-preview code{font-family:Consolas,monospace;font-size:10px;background:#18182A;color:#F38BA8;padding:1px 3px;border-radius:2px}
+.card-preview pre{background:#18182A;border:1px solid var(--border2);border-radius:4px;padding:6px 8px;overflow:hidden;margin:3px 0;font-size:10px;color:var(--text2);font-family:Consolas,monospace;white-space:pre-wrap;word-break:break-all}
+.card-preview pre code{background:none;color:var(--text2);padding:0;font-size:10px}
+.card-preview hr{border:none;border-top:1px solid var(--border);margin:4px 0}
+.card-preview strong{font-weight:700;color:var(--text2)}
+.card-preview em{font-style:italic}
+.card-preview a{color:var(--blue);text-decoration:none}
+.card-preview blockquote{border-left:2px solid var(--border2);padding-left:6px;color:var(--muted);margin:2px 0}
+.card-date{font-size:10px;color:var(--muted);text-align:right;margin-top:auto}
+
+/* ── TITLE CARD ── */
+.title-card{position:absolute;border:1px solid var(--border2);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;padding:8px 12px;text-align:center;overflow:hidden}
+.title-card:hover{box-shadow:0 0 0 2px var(--purple)}
+
+/* ── IMAGE CARD ── */
+.img-card{position:absolute;border:1px solid var(--border2);border-radius:8px;overflow:hidden;cursor:pointer;background:var(--bg3);display:flex;align-items:center;justify-content:center}
+.img-card:hover{box-shadow:0 0 0 2px var(--purple)}
+.img-card img{max-width:100%;max-height:100%;object-fit:contain}
+
+/* ── MODAL ── */
+#modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center}
+#modal-backdrop.open{display:flex}
+#modal{background:var(--bg);border:1px solid var(--border2);border-radius:12px;width:min(860px,92vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
+#modal-header{background:var(--bg3);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;gap:10px}
+#modal-title{font-size:16px;font-weight:700;color:var(--text);flex:1}
+#modal-copy{background:var(--surface);border:none;color:var(--text2);height:30px;padding:0 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap}
+#modal-copy:hover{background:var(--surface2)}
+#modal-copy.copied{background:var(--green);color:#1E1E2E}
+#modal-cat{font-size:11px;font-weight:700;color:#fff;padding:2px 8px;border-radius:4px}
+#modal-close{background:var(--surface);border:none;color:var(--text2);width:30px;height:30px;border-radius:6px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center}
+#modal-close:hover{background:var(--surface2)}
+#modal-body{padding:20px 24px;overflow-y:auto;flex:1}
+
+/* ── IMAGE MODAL ── */
+#imgmodal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2000;align-items:center;justify-content:center;cursor:zoom-out}
+#imgmodal-backdrop.open{display:flex}
+#imgmodal-backdrop img{max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.6);cursor:default}
+
+/* ── MARKDOWN RENDER ── */
+#modal-body h1{font-size:26px;font-weight:700;color:#BAC2DE;margin:16px 0 8px}
+#modal-body h2{font-size:20px;font-weight:600;color:#B0BAD8;margin:14px 0 6px}
+#modal-body h3{font-size:16px;font-weight:600;color:#A6B0CE;margin:12px 0 6px}
+#modal-body p{color:#A6ADC8;line-height:1.7;margin-bottom:10px}
+#modal-body ul,#modal-body ol{padding-left:20px;color:#A6ADC8;margin-bottom:10px;line-height:1.7}
+#modal-body code{font-family:Consolas,monospace;font-size:12px;background:#18182A;color:#F38BA8;padding:1px 5px;border-radius:3px}
+#modal-body pre{background:#18182A;border:1px solid var(--border2);border-radius:6px;padding:12px;overflow-x:auto;margin-bottom:12px}
+#modal-body pre code{background:none;color:#CDD6F4;padding:0}
+#modal-body a{color:#89B4FA;text-decoration:underline;cursor:pointer}
+#modal-body blockquote{border-left:3px solid var(--border2);padding-left:12px;color:var(--muted);margin-bottom:10px}
+#modal-body table{border-collapse:collapse;width:100%;margin-bottom:12px}
+#modal-body th,#modal-body td{border:1px solid var(--border2);padding:6px 10px;color:var(--text2)}
+#modal-body th{background:var(--bg3);color:var(--text);font-weight:600}
+#modal-body hr{border:none;border-top:1px solid var(--border);margin:14px 0}
+#modal-body strong{font-weight:700;color:var(--text)}
+#modal-body em{font-style:italic}
+#modal-body input[type=checkbox]{accent-color:var(--purple);margin-right:6px}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--surface2);border-radius:3px}
+</style>
+</head>
+<body>
+
+<!-- TOOLBAR -->
+<div id="toolbar">
+  <h1>ProjectSample</h1>
+  <button class="tb-btn" id="btn-fit" onclick="fitAll()">Fit all</button>
+ <button class="tb-btn" id="btn-conn" onclick="toggleConnections()" style="display:none">Connections</button>
+  <span style="color:var(--muted);font-size:11px;margin-left:8px">Scroll = zoom · Drag = pan · Click card = preview</span>
+</div>
+
+<!-- BOARD -->
+<div id="board-wrap">
+  <div id="board">
+    <svg id="svg-overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+    <!-- cards injected by JS -->
+  </div>
+</div>
+
+<!-- NOTE MODAL -->
+<div id="modal-backdrop" onclick="closeModal(event)">
+  <div id="modal" onclick="e=>e.stopPropagation()">
+    <div id="modal-header">
+      <div id="modal-title"></div>
+      <div id="modal-cat" style="display:none"></div>
+        <button id="modal-copy" onclick="copyModalMd()">Copy MD</button>
+      <button id="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- IMAGE MODAL -->
+<div id="imgmodal-backdrop" onclick="closeImgModal()">
+  <img id="imgmodal-img" src="" alt="">
+</div>
+
+<script>
+const DATA = {"projectName":"ProjectSample","cards":[{"relativePath":"Getting Started.md","boardX":1724.5727122944727,"boardY":1025.1785652211606,"categoryId":null,"customWidth":371.346672641253,"customHeight":328.0211713324454,"cardSize":"minimum","locked":true,"htmlContent":"\u003Ch1\u003EWelcome to Apex\u003C/h1\u003E\n\u003Cp\u003EApex lets you manage your notes as \u003Cstrong\u003Eplain \u003Ccode\u003E.md\u003C/code\u003E files\u003C/strong\u003E\non an visual board.\u003C/p\u003E\n\u003Cblockquote\u003E\n\u003Cp\u003ENo database. No cloud. No lock-in.\nAll data stays on your disk.\u003C/p\u003E\n\u003C/blockquote\u003E\n\u003Ch2\u003ETwo ways to work\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003E\uD83D\uDCCB \u003Cstrong\u003EBoard\u003C/strong\u003E \u2014 infinite 2D canvas with draggable cards\u003C/li\u003E\n\u003Cli\u003E\uD83D\uDCC1 \u003Cstrong\u003EStructure\u003C/strong\u003E \u2014 classic file tree with side-by-side editor\u003C/li\u003E\n\u003C/ul\u003E\n\u003Cp\u003ESwitch instantly using the \u003Cstrong\u003EBoard / Structure\u003C/strong\u003E toggle in the toolbar.\nBoth views are always in sync.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Board View]] \u00B7 [[Structure View]]\u003C/p\u003E\n","previewHtml":"\u003Ch1\u003EWelcome to Apex\u003C/h1\u003E\n\u003Cp\u003EApex lets you manage your notes as \u003Cstrong\u003Eplain \u003Ccode\u003E.md\u003C/code\u003E files\u003C/strong\u003E\non an visual board.\u003C/p\u003E\n\u003Cblockquote\u003E\n\u003Cp\u003ENo database. No cloud. No lock-in.\nAll data stays on your disk.\u003C/p\u003E\n\u003C/blockquote\u003E\n\u003Ch2\u003ETwo ways to work\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003E\uD83D\uDCCB \u003Cstrong\u003EBoard\u003C/strong\u003E \u2014 infinite 2D canvas with draggable cards\u003C/li\u003E\n\u003Cli\u003E\uD83D\uDCC1 \u003Cstrong\u003EStructure\u003C/strong\u003E \u2014 classic file tree with side-by-side editor\u003C/li\u003E\n\u003C/ul\u003E\n\u003Cp\u003ESwitch instantly using the \u003Cstrong\u003EBoard / Structure\u003C/strong\u003E toggle in the toolbar.\nBoth views are always in sync.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Board View]] \u00B7 [[Structure View]]\u003C/p\u003E\n","preview":"Welcome to Apex Apex lets you manage your notes as plain .md files on an visual board. No database. No cloud. No lock-in. All data stays on your disk. Two ways to work - \uD83D\uDCCB Board \u2014 infinite 2D canvas \u2026","markdownRaw":"# Welcome to Apex\n\nApex lets you manage your notes as **plain \u0060.md\u0060 files**\non an visual board.\n\n\u003E No database. No cloud. No lock-in.\n\u003E All data stays on your disk.\n\n## Two ways to work\n- \uD83D\uDCCB **Board** \u2014 infinite 2D canvas with draggable cards\n- \uD83D\uDCC1 **Structure** \u2014 classic file tree with side-by-side editor\n\nSwitch instantly using the **Board / Structure** toggle in the toolbar.\nBoth views are always in sync.\n\nSee also: [[Board View]] \u00B7 [[Structure View]]","modifiedDate":"2026-06-14 21:26"},{"relativePath":"Board View.md","boardX":923.2794142440367,"boardY":1739.6370613456722,"categoryId":null,"customWidth":331.4217983025883,"customHeight":474.9160509570647,"cardSize":"minimum","locked":true,"htmlContent":"\u003Cp\u003EThe main canvas where your notes live as cards.\u003C/p\u003E\n\u003Ch2\u003EEach card shows\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003ETitle\u003C/strong\u003E of the note\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003ECategory badge\u003C/strong\u003E (color coded)\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EFolder path\u003C/strong\u003E if the note is in a subfolder\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EMarkdown preview\u003C/strong\u003E of the content\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003ELast modified date\u003C/strong\u003E\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003ESizes\u003C/h2\u003E\n\u003Cp\u003E\uD83D\uDFE2  Minimum\t220x120\n\uD83D\uDFE1  Medium\t440x160\n\uD83D\uDD34 Large\t880x320\u003C/p\u003E\n\u003Cp\u003EYou can also \u003Cstrong\u003Edrag card edges\u003C/strong\u003E to resize freely.\u003C/p\u003E\n\u003Cblockquote\u003E\n\u003Cp\u003E\uD83D\uDD12 Lock a card to prevent accidental movement.\u003C/p\u003E\n\u003C/blockquote\u003E\n\u003Ch2\u003ENavigation\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003EScroll\u003C/strong\u003E \u2014 zoom in/out toward cursor\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EDrag background\u003C/strong\u003E or \u003Cstrong\u003Emiddle mouse\u003C/strong\u003E \u2014 pan\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003ECtrl\u002BHome\u003C/strong\u003E \u2014 fit all cards in view\u003C/li\u003E\n\u003C/ul\u003E\n\u003Cp\u003ESee also: [[Creating Notes]] \u00B7 [[Relations]]\u003C/p\u003E\n","previewHtml":"\u003Cp\u003EThe main canvas where your notes live as cards.\u003C/p\u003E\n\u003Ch2\u003EEach card shows\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003ETitle\u003C/strong\u003E of the note\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003ECategory badge\u003C/strong\u003E (color coded)\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EFolder path\u003C/strong\u003E if the note is in a subfolder\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EMarkdown preview\u003C/strong\u003E of the content\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003ELast modified date\u003C/strong\u003E\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003ESizes\u003C/h2\u003E\n\u003Cp\u003E\uD83D\uDFE2  Minimum\t220x120\n\uD83D\uDFE1  Medium\t440x160\n\uD83D\uDD34 Large\t880x320\u003C/p\u003E\n\u003Cp\u003EYou can also \u003Cstrong\u003Edrag card edges\u003C/strong\u003E to resize freely.\u003C/p\u003E\n\u003Cblockquote\u003E\n\u003Cp\u003E\uD83D\uDD12 Lock a card to prevent accidental movement.\u003C/p\u003E\n\u003C/blockquote\u003E\n\u003Ch2\u003ENavigation\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003EScroll\u003C/strong\u003E \u2014 zoom in/out toward cursor\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EDrag background\u003C/strong\u003E or \u003Cstrong\u003Emiddle mouse\u003C/strong\u003E \u2014 pan\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003ECtrl\u002BHome\u003C/strong\u003E \u2014 fit all cards in view\u003C/li\u003E\n\u003C/ul\u003E\n\u003Cp\u003ESee also: [[Creating Notes]] \u00B7 [[Relations]]\u003C/p\u003E\n","preview":"The main canvas where your notes live as cards. Each card shows - Title of the note - Category badge (color coded) - Folder path if the note is in a subfolder - Markdown preview of the content - Last \u2026","markdownRaw":"\nThe main canvas where your notes live as cards.\n\n## Each card shows\n- **Title** of the note\n- **Category badge** (color coded)\n- **Folder path** if the note is in a subfolder\n- **Markdown preview** of the content\n- **Last modified date**\n\n## Sizes\n\r\n\uD83D\uDFE2  Minimum\t220x120\r\n\uD83D\uDFE1  Medium\t440x160\r\n\uD83D\uDD34 Large\t880x320\n\nYou can also **drag card edges** to resize freely.\n\n\u003E \uD83D\uDD12 Lock a card to prevent accidental movement.\n\n## Navigation\n- **Scroll** \u2014 zoom in/out toward cursor\n- **Drag background** or **middle mouse** \u2014 pan\n- **Ctrl\u002BHome** \u2014 fit all cards in view\n\nSee also: [[Creating Notes]] \u00B7 [[Relations]]","modifiedDate":"2026-06-14 21:32"},{"relativePath":"Creating Notes.md","boardX":719.5737628412138,"boardY":2540.132086567088,"categoryId":null,"customWidth":289.09090909090946,"customHeight":344.818181818182,"cardSize":"minimum","locked":true,"htmlContent":"\u003Ch2\u003EOn the board\u003C/h2\u003E\n\u003Cp\u003E\u003Cstrong\u003ERight-click\u003C/strong\u003E empty area \u2192 \u003Cstrong\u003ENew card\u003C/strong\u003E\nor press \u003Cstrong\u003ECtrl\u002BN\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003EA dialog appears where you:\u003C/p\u003E\n\u003Col\u003E\n\u003Cli\u003EEnter a \u003Cstrong\u003Etitle\u003C/strong\u003E\u003C/li\u003E\n\u003Cli\u003EPick a \u003Cstrong\u003Etemplate\u003C/strong\u003E (optional)\u003C/li\u003E\n\u003C/ol\u003E\n\u003Cp\u003EThe note is created as a \u003Ccode\u003E.md\u003C/code\u003E file on disk immediately.\u003C/p\u003E\n\u003Ch2\u003EFrom clipboard\u003C/h2\u003E\n\u003Cp\u003E\u003Cstrong\u003ECtrl\u002BV\u003C/strong\u003E with text in clipboard \u2192 new note dialog,\ncontent pre-filled from clipboard.\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ECtrl\u002BV\u003C/strong\u003E with an image \u2192 saved to \u003Ccode\u003E.images/\u003C/code\u003E\nand placed as an image card on the board.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Templates]] \u00B7 [[Structure View]]\u003C/p\u003E\n","previewHtml":"\u003Ch2\u003EOn the board\u003C/h2\u003E\n\u003Cp\u003E\u003Cstrong\u003ERight-click\u003C/strong\u003E empty area \u2192 \u003Cstrong\u003ENew card\u003C/strong\u003E\nor press \u003Cstrong\u003ECtrl\u002BN\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003EA dialog appears where you:\u003C/p\u003E\n\u003Col\u003E\n\u003Cli\u003EEnter a \u003Cstrong\u003Etitle\u003C/strong\u003E\u003C/li\u003E\n\u003Cli\u003EPick a \u003Cstrong\u003Etemplate\u003C/strong\u003E (optional)\u003C/li\u003E\n\u003C/ol\u003E\n\u003Cp\u003EThe note is created as a \u003Ccode\u003E.md\u003C/code\u003E file on disk immediately.\u003C/p\u003E\n\u003Ch2\u003EFrom clipboard\u003C/h2\u003E\n\u003Cp\u003E\u003Cstrong\u003ECtrl\u002BV\u003C/strong\u003E with text in clipboard \u2192 new note dialog,\ncontent pre-filled from clipboard.\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ECtrl\u002BV\u003C/strong\u003E with an image \u2192 saved to \u003Ccode\u003E.images/\u003C/code\u003E\nand placed as an image card on the board.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Templates]] \u00B7 [[Structure View]]\u003C/p\u003E\n","preview":"On the board Right-click empty area \u2192 New card or press Ctrl\u002BN A dialog appears where you: 1. Enter a title 2. Pick a template (optional) The note is created as a .md file on disk immediately. From cl\u2026","markdownRaw":"\n\n## On the board\n**Right-click** empty area \u2192 **New card**\nor press **Ctrl\u002BN**\n\nA dialog appears where you:\n1. Enter a **title**\n2. Pick a **template** (optional)\n\nThe note is created as a \u0060.md\u0060 file on disk immediately.\n\n## From clipboard\n**Ctrl\u002BV** with text in clipboard \u2192 new note dialog,\ncontent pre-filled from clipboard.\n\n**Ctrl\u002BV** with an image \u2192 saved to \u0060.images/\u0060\nand placed as an image card on the board.\n\n\nSee also: [[Templates]] \u00B7 [[Structure View]]","modifiedDate":"2026-06-14 22:29"},{"relativePath":"Editing-Notes.md","boardX":1410.7241080096053,"boardY":2529.38726348791,"categoryId":null,"customWidth":314.3155573051913,"customHeight":411.92415561326015,"cardSize":"minimum","locked":true,"htmlContent":"\u003Cp\u003EClick any card \u2192 opens in the right panel (Structure view).\u003C/p\u003E\n\u003Ch2\u003ERead mode\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003EFull Markdown rendering\u003C/li\u003E\n\u003Cli\u003EClickable \u003Ccode\u003E[[wiki-links]]\u003C/code\u003E\u003C/li\u003E\n\u003Cli\u003ESyntax-highlighted code blocks\u003C/li\u003E\n\u003Cli\u003ETables, task lists, images\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EEdit mode\u003C/h2\u003E\n\u003Cp\u003EPress \u003Cstrong\u003EF2\u003C/strong\u003E or click \u003Cstrong\u003EEdit\u003C/strong\u003E button.\u003C/p\u003E\n\u003Cul\u003E\n\u003Cli\u003ERaw Markdown editor\u003C/li\u003E\n\u003Cli\u003EToolbar with formatting buttons\u003C/li\u003E\n\u003Cli\u003E\u003Ccode\u003E[[link]]\u003C/code\u003E autocomplete dropdown\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003ECtrl\u002BS\u003C/strong\u003E to save\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EEsc\u003C/strong\u003E to cancel\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003ERename\u003C/h2\u003E\n\u003Cp\u003EEdit the \u003Cstrong\u003Etitle field\u003C/strong\u003E at the top in edit mode.\nFile is renamed on disk automatically.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Markdown Toolbar]] \u00B7 [[Wiki-links]]\u003C/p\u003E\n","previewHtml":"\u003Cp\u003EClick any card \u2192 opens in the right panel (Structure view).\u003C/p\u003E\n\u003Ch2\u003ERead mode\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003EFull Markdown rendering\u003C/li\u003E\n\u003Cli\u003EClickable \u003Ccode\u003E[[wiki-links]]\u003C/code\u003E\u003C/li\u003E\n\u003Cli\u003ESyntax-highlighted code blocks\u003C/li\u003E\n\u003Cli\u003ETables, task lists, images\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EEdit mode\u003C/h2\u003E\n\u003Cp\u003EPress \u003Cstrong\u003EF2\u003C/strong\u003E or click \u003Cstrong\u003EEdit\u003C/strong\u003E button.\u003C/p\u003E\n\u003Cul\u003E\n\u003Cli\u003ERaw Markdown editor\u003C/li\u003E\n\u003Cli\u003EToolbar with formatting buttons\u003C/li\u003E\n\u003Cli\u003E\u003Ccode\u003E[[link]]\u003C/code\u003E autocomplete dropdown\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003ECtrl\u002BS\u003C/strong\u003E to save\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EEsc\u003C/strong\u003E to cancel\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003ERename\u003C/h2\u003E\n\u003Cp\u003EEdit the \u003Cstrong\u003Etitle field\u003C/strong\u003E at the top in edit mode.\nFile is renamed on disk automatically.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Markdown Toolbar]] \u00B7 [[Wiki-links]]\u003C/p\u003E\n","preview":"Click any card \u2192 opens in the right panel (Structure view). Read mode - Full Markdown rendering - Clickable wiki-links - Syntax-highlighted code blocks - Tables, task lists, images Edit mode Press F2 \u2026","markdownRaw":"\nClick any card \u2192 opens in the right panel (Structure view).\n\n## Read mode\n- Full Markdown rendering\n- Clickable \u0060[[wiki-links]]\u0060\n- Syntax-highlighted code blocks\n- Tables, task lists, images\n\n## Edit mode\nPress **F2** or click **Edit** button.\n\n- Raw Markdown editor\n- Toolbar with formatting buttons\n- \u0060[[link]]\u0060 autocomplete dropdown\n- **Ctrl\u002BS** to save\n- **Esc** to cancel\n\n## Rename\nEdit the **title field** at the top in edit mode.\nFile is renamed on disk automatically.\n\nSee also: [[Markdown Toolbar]] \u00B7 [[Wiki-links]]","modifiedDate":"2026-06-14 21:37"},{"relativePath":"Markdown Toolbar.md","boardX":2378.788962333653,"boardY":2545.8526580112334,"categoryId":null,"customWidth":405.2307692307695,"customHeight":395.0769230769233,"cardSize":"minimum","locked":true,"htmlContent":"\u003Cp\u003EVisible in \u003Cstrong\u003Eedit mode\u003C/strong\u003E below the editor.\u003C/p\u003E\n\u003Ch2\u003EHeadings\u003C/h2\u003E\n\u003Cp\u003E\u003Ccode\u003EH1\u003C/code\u003E \u003Ccode\u003EH2\u003C/code\u003E \u003Ccode\u003EH3\u003C/code\u003E \u003Ccode\u003EH4\u003C/code\u003E\u003C/p\u003E\n\u003Ch2\u003EFormatting\u003C/h2\u003E\n\u003Cp\u003E\u003Ccode\u003EB\u003C/code\u003E \u003Cstrong\u003Ebold\u003C/strong\u003E \u00B7 \u003Ccode\u003EI\u003C/code\u003E \u003Cem\u003Eitalic\u003C/em\u003E \u00B7 \u003Ccode\u003E~~\u003C/code\u003E strikethrough \u00B7 \u003Ccode\u003E\u0060\u003C/code\u003E inline code\u003C/p\u003E\n\u003Ch2\u003EBlocks\u003C/h2\u003E\n\u003Cp\u003E\u003Ccode\u003E{ }\u003C/code\u003E code block \u00B7 \u003Ccode\u003E\u275D\u003C/code\u003E blockquote \u00B7 \u003Ccode\u003E\u2500\u003C/code\u003E horizontal rule\u003C/p\u003E\n\u003Ch2\u003ELists\u003C/h2\u003E\n\u003Cp\u003E\u003Ccode\u003E\u2022 \u2014\u003C/code\u003E bullet \u00B7 \u003Ccode\u003E1.\u003C/code\u003E numbered \u00B7 \u003Ccode\u003E\u2610\u003C/code\u003E task item\u003C/p\u003E\n\u003Ch2\u003EInsert\u003C/h2\u003E\n\u003Cp\u003E\u003Ccode\u003E\uD83D\uDD17\u003C/code\u003E link \u00B7 \u003Ccode\u003E\uD83D\uDDBC\u003C/code\u003E image MD \u00B7 \u003Ccode\u003E\u229E img\u003C/code\u003E centered image HTML \u00B7 \u003Ccode\u003E[[\u003C/code\u003E wiki-link\u003C/p\u003E\n\u003Ch2\u003ETables\u003C/h2\u003E\n\u003Cp\u003E\u003Ccode\u003E\u229E 2\u00D72\u003C/code\u003E \u00B7 \u003Ccode\u003E\u229E 3\u00D73\u003C/code\u003E\u003C/p\u003E\n\u003Cp\u003ESee also: [[Editing-Notes]] \u00B7 [[Wiki-links]]\u003C/p\u003E\n","previewHtml":"\u003Cp\u003EVisible in \u003Cstrong\u003Eedit mode\u003C/strong\u003E below the editor.\u003C/p\u003E\n\u003Ch2\u003EHeadings\u003C/h2\u003E\n\u003Cp\u003E\u003Ccode\u003EH1\u003C/code\u003E \u003Ccode\u003EH2\u003C/code\u003E \u003Ccode\u003EH3\u003C/code\u003E \u003Ccode\u003EH4\u003C/code\u003E\u003C/p\u003E\n\u003Ch2\u003EFormatting\u003C/h2\u003E\n\u003Cp\u003E\u003Ccode\u003EB\u003C/code\u003E \u003Cstrong\u003Ebold\u003C/strong\u003E \u00B7 \u003Ccode\u003EI\u003C/code\u003E \u003Cem\u003Eitalic\u003C/em\u003E \u00B7 \u003Ccode\u003E~~\u003C/code\u003E strikethrough \u00B7 \u003Ccode\u003E\u0060\u003C/code\u003E inline code\u003C/p\u003E\n\u003Ch2\u003EBlocks\u003C/h2\u003E\n\u003Cp\u003E\u003Ccode\u003E{ }\u003C/code\u003E code block \u00B7 \u003Ccode\u003E\u275D\u003C/code\u003E blockquote \u00B7 \u003Ccode\u003E\u2500\u003C/code\u003E horizontal rule\u003C/p\u003E\n\u003Ch2\u003ELists\u003C/h2\u003E\n\u003Cp\u003E\u003Ccode\u003E\u2022 \u2014\u003C/code\u003E bullet \u00B7 \u003Ccode\u003E1.\u003C/code\u003E numbered \u00B7 \u003Ccode\u003E\u2610\u003C/code\u003E task item\u003C/p\u003E\n\u003Ch2\u003EInsert\u003C/h2\u003E\n\u003Cp\u003E\u003Ccode\u003E\uD83D\uDD17\u003C/code\u003E link \u00B7 \u003Ccode\u003E\uD83D\uDDBC\u003C/code\u003E image MD \u00B7 \u003Ccode\u003E\u229E img\u003C/code\u003E centered image HTML \u00B7 \u003Ccode\u003E[[\u003C/code\u003E wiki-link\u003C/p\u003E\n\u003Ch2\u003ETables\u003C/h2\u003E\n\u003Cp\u003E\u003Ccode\u003E\u229E 2\u00D72\u003C/code\u003E \u00B7 \u003Ccode\u003E\u229E 3\u00D73\u003C/code\u003E\u003C/p\u003E\n\u003Cp\u003ESee also: [[Editing-Notes]] \u00B7 [[Wiki-links]]\u003C/p\u003E\n","preview":"Visible in edit mode below the editor. Headings H1 H2 H3 H4 Formatting B bold \u00B7 I italic \u00B7 strikethrough \u00B7 inline code Blocks { } code block \u00B7 \u275D blockquote \u00B7 \u2500 horizontal rule Lists \u2022 \u2014 bullet \u00B7 1. nu\u2026","markdownRaw":"\n\nVisible in **edit mode** below the editor.\n\n## Headings\n\u0060H1\u0060 \u0060H2\u0060 \u0060H3\u0060 \u0060H4\u0060\n\n## Formatting\n\u0060B\u0060 **bold** \u00B7 \u0060I\u0060 *italic* \u00B7 \u0060~~\u0060 strikethrough \u00B7 \u0060\u0060 \u0060 \u0060\u0060 inline code\n\n## Blocks\n\u0060{ }\u0060 code block \u00B7 \u0060\u275D\u0060 blockquote \u00B7 \u0060\u2500\u0060 horizontal rule\n\n## Lists\n\u0060\u2022 \u2014\u0060 bullet \u00B7 \u00601.\u0060 numbered \u00B7 \u0060\u2610\u0060 task item\n\n## Insert\n\u0060\uD83D\uDD17\u0060 link \u00B7 \u0060\uD83D\uDDBC\u0060 image MD \u00B7 \u0060\u229E img\u0060 centered image HTML \u00B7 \u0060[[\u0060 wiki-link\n\n## Tables\n\u0060\u229E 2\u00D72\u0060 \u00B7 \u0060\u229E 3\u00D73\u0060\n\nSee also: [[Editing-Notes]] \u00B7 [[Wiki-links]]","modifiedDate":"2026-06-14 21:38"},{"relativePath":"Wiki-links.md","boardX":1859.6617074709138,"boardY":2525.626164978698,"categoryId":null,"customWidth":344.9230769230767,"customHeight":420.92307692307713,"cardSize":"minimum","locked":true,"htmlContent":"\u003Cp\u003EType \u003Ccode\u003E[[\u003C/code\u003E anywhere in edit mode.\nA \u003Cstrong\u003Edropdown\u003C/strong\u003E appears with matching notes.\n[[My Note]]\u003C/p\u003E\n\u003Cp\u003E[[Tasks/Daily]]\u003C/p\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003EArrow keys\u003C/strong\u003E to navigate results\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EEnter\u003C/strong\u003E to insert\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EEsc\u003C/strong\u003E to close\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EIn read mode\u003C/h2\u003E\n\u003Cp\u003EWiki-links render as \u003Cstrong\u003Eclickable blue links\u003C/strong\u003E.\nClick \u2192 jumps to that card on the board.\u003C/p\u003E\n\u003Cp\u003EIf the target note doesn\u0027t exist yet,\nthe link renders in gray (non-clickable).\u003C/p\u003E\n\u003Ch2\u003EConnections on board\u003C/h2\u003E\n\u003Cp\u003EEnable the \u003Cstrong\u003E\uD83D\uDD17 button\u003C/strong\u003E in toolbar to draw\nlines between cards that link to each other.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Relations]] \u00B7 [[Board View]]\u003C/p\u003E\n","previewHtml":"\u003Cp\u003EType \u003Ccode\u003E[[\u003C/code\u003E anywhere in edit mode.\nA \u003Cstrong\u003Edropdown\u003C/strong\u003E appears with matching notes.\n[[My Note]]\u003C/p\u003E\n\u003Cp\u003E[[Tasks/Daily]]\u003C/p\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003EArrow keys\u003C/strong\u003E to navigate results\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EEnter\u003C/strong\u003E to insert\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EEsc\u003C/strong\u003E to close\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EIn read mode\u003C/h2\u003E\n\u003Cp\u003EWiki-links render as \u003Cstrong\u003Eclickable blue links\u003C/strong\u003E.\nClick \u2192 jumps to that card on the board.\u003C/p\u003E\n\u003Cp\u003EIf the target note doesn\u0027t exist yet,\nthe link renders in gray (non-clickable).\u003C/p\u003E\n\u003Ch2\u003EConnections on board\u003C/h2\u003E\n\u003Cp\u003EEnable the \u003Cstrong\u003E\uD83D\uDD17 button\u003C/strong\u003E in toolbar to draw\nlines between cards that link to each other.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Relations]] \u00B7 [[Board View]]\u003C/p\u003E\n","preview":"Type anywhere in edit mode. A dropdown appears with matching notes. [[My Note Tasks/Daily - Arrow keys to navigate results - Enter to insert - Esc to close In read mode Wiki-links render as clickable \u2026","markdownRaw":"\nType \u0060[[\u0060 anywhere in edit mode.\nA **dropdown** appears with matching notes.\n[[My Note]]\n\n[[Tasks/Daily]]\n\n- **Arrow keys** to navigate results\n- **Enter** to insert\n- **Esc** to close\n\n## In read mode\nWiki-links render as **clickable blue links**.\nClick \u2192 jumps to that card on the board.\n\nIf the target note doesn\u0027t exist yet,\nthe link renders in gray (non-clickable).\n\n## Connections on board\nEnable the **\uD83D\uDD17 button** in toolbar to draw\nlines between cards that link to each other.\n\nSee also: [[Relations]] \u00B7 [[Board View]]","modifiedDate":"2026-06-14 21:39"},{"relativePath":"Relations.md","boardX":4116.830281400246,"boardY":1975.3579379831904,"categoryId":null,"customWidth":347.6190476190486,"customHeight":362.2857142857142,"cardSize":"minimum","locked":false,"htmlContent":"\u003Cp\u003EDraw \u003Cstrong\u003Emanual arrows\u003C/strong\u003E between any two board elements\n(notes, images, title cards).\u003C/p\u003E\n\u003Ch2\u003EHow to draw\u003C/h2\u003E\n\u003Col\u003E\n\u003Cli\u003E\u003Cstrong\u003ERight-click\u003C/strong\u003E a card \u2192 \u003Cstrong\u003EAdd relation\u003C/strong\u003E\u003C/li\u003E\n\u003Cli\u003EClick the \u003Cstrong\u003Etarget\u003C/strong\u003E card\u003C/li\u003E\n\u003C/ol\u003E\n\u003Ch2\u003ECustomise\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003EDrag the \u25CF\u003C/strong\u003E handle to reshape the curve\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003ERight-click the \u25CF\u003C/strong\u003E \u2192 Relation settings\n\u003Cul\u003E\n\u003Cli\u003EChange \u003Cstrong\u003Ecolor\u003C/strong\u003E (10 presets)\u003C/li\u003E\n\u003Cli\u003EChange \u003Cstrong\u003Ethickness\u003C/strong\u003E (0.5\u20138px)\u003C/li\u003E\n\u003C/ul\u003E\n\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003ERight-click the \u25CF\u003C/strong\u003E \u2192 Delete relation\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EWiki-link connections\u003C/h2\u003E\n\u003Cp\u003EToggle with \u003Cstrong\u003E\uD83D\uDD17\u003C/strong\u003E in toolbar.\nThese are auto-detected from \u003Ccode\u003E[[links]]\u003C/code\u003E in note content.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Wiki-links]] \u00B7 [[Images \u0026amp; Titles]]\u003C/p\u003E\n","previewHtml":"\u003Cp\u003EDraw \u003Cstrong\u003Emanual arrows\u003C/strong\u003E between any two board elements\n(notes, images, title cards).\u003C/p\u003E\n\u003Ch2\u003EHow to draw\u003C/h2\u003E\n\u003Col\u003E\n\u003Cli\u003E\u003Cstrong\u003ERight-click\u003C/strong\u003E a card \u2192 \u003Cstrong\u003EAdd relation\u003C/strong\u003E\u003C/li\u003E\n\u003Cli\u003EClick the \u003Cstrong\u003Etarget\u003C/strong\u003E card\u003C/li\u003E\n\u003C/ol\u003E\n\u003Ch2\u003ECustomise\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003EDrag the \u25CF\u003C/strong\u003E handle to reshape the curve\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003ERight-click the \u25CF\u003C/strong\u003E \u2192 Relation settings\n\u003Cul\u003E\n\u003Cli\u003EChange \u003Cstrong\u003Ecolor\u003C/strong\u003E (10 presets)\u003C/li\u003E\n\u003Cli\u003EChange \u003Cstrong\u003Ethickness\u003C/strong\u003E (0.5\u20138px)\u003C/li\u003E\n\u003C/ul\u003E\n\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003ERight-click the \u25CF\u003C/strong\u003E \u2192 Delete relation\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EWiki-link connections\u003C/h2\u003E\n\u003Cp\u003EToggle with \u003Cstrong\u003E\uD83D\uDD17\u003C/strong\u003E in toolbar.\nThese are auto-detected from \u003Ccode\u003E[[links]]\u003C/code\u003E in note content.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Wiki-links]] \u00B7 [[Images \u0026amp; Titles]]\u003C/p\u003E\n","preview":"Draw manual arrows between any two board elements (notes, images, title cards). How to draw 1. Right-click a card \u2192 Add relation 2. Click the target card Customise - Drag the \u25CF handle to reshape the c\u2026","markdownRaw":"\n\nDraw **manual arrows** between any two board elements\n(notes, images, title cards).\n\n## How to draw\n1. **Right-click** a card \u2192 **Add relation**\n2. Click the **target** card\n\n## Customise\n- **Drag the \u25CF** handle to reshape the curve\n- **Right-click the \u25CF** \u2192 Relation settings\n  - Change **color** (10 presets)\n  - Change **thickness** (0.5\u20138px)\n- **Right-click the \u25CF** \u2192 Delete relation\n\n## Wiki-link connections\nToggle with **\uD83D\uDD17** in toolbar.\nThese are auto-detected from \u0060[[links]]\u0060 in note content.\n\nSee also: [[Wiki-links]] \u00B7 [[Images \u0026 Titles]]","modifiedDate":"2026-06-14 21:42"},{"relativePath":"Categories.md","boardX":4894.419783761569,"boardY":2049.519188123233,"categoryId":null,"customWidth":326.2857142857147,"customHeight":361.14285714285734,"cardSize":"minimum","locked":false,"htmlContent":"\u003Cp\u003EOrganise notes by topic using \u003Cstrong\u003Ecolor-coded categories\u003C/strong\u003E.\u003C/p\u003E\n\u003Ch2\u003ECreate a category\u003C/h2\u003E\n\u003Cp\u003EClick \u003Cstrong\u003E\u2699\u003C/strong\u003E in toolbar \u2192 Category Manager\u003C/p\u003E\n\u003Cul\u003E\n\u003Cli\u003EEnter a name\u003C/li\u003E\n\u003Cli\u003EPick a color (preset palette or custom hex)\u003C/li\u003E\n\u003Cli\u003EClick \u003Cstrong\u003EAdd\u003C/strong\u003E\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EAssign to a note\u003C/h2\u003E\n\u003Cp\u003E\u003Cstrong\u003ERight-click\u003C/strong\u003E a board card \u2192 \u003Cstrong\u003ESet category\u003C/strong\u003E\u003C/p\u003E\n\u003Ch2\u003EWhere badges appear\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003EBoard card (colored strip \u002B badge)\u003C/li\u003E\n\u003Cli\u003EFile tree in Structure view\u003C/li\u003E\n\u003Cli\u003ENote toolbar in read mode\u003C/li\u003E\n\u003C/ul\u003E\n\u003Cp\u003EOne category per note.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Edit Category]] \u00B7 [[Structure View]]\u003C/p\u003E\n","previewHtml":"\u003Cp\u003EOrganise notes by topic using \u003Cstrong\u003Ecolor-coded categories\u003C/strong\u003E.\u003C/p\u003E\n\u003Ch2\u003ECreate a category\u003C/h2\u003E\n\u003Cp\u003EClick \u003Cstrong\u003E\u2699\u003C/strong\u003E in toolbar \u2192 Category Manager\u003C/p\u003E\n\u003Cul\u003E\n\u003Cli\u003EEnter a name\u003C/li\u003E\n\u003Cli\u003EPick a color (preset palette or custom hex)\u003C/li\u003E\n\u003Cli\u003EClick \u003Cstrong\u003EAdd\u003C/strong\u003E\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EAssign to a note\u003C/h2\u003E\n\u003Cp\u003E\u003Cstrong\u003ERight-click\u003C/strong\u003E a board card \u2192 \u003Cstrong\u003ESet category\u003C/strong\u003E\u003C/p\u003E\n\u003Ch2\u003EWhere badges appear\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003EBoard card (colored strip \u002B badge)\u003C/li\u003E\n\u003Cli\u003EFile tree in Structure view\u003C/li\u003E\n\u003Cli\u003ENote toolbar in read mode\u003C/li\u003E\n\u003C/ul\u003E\n\u003Cp\u003EOne category per note.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Edit Category]] \u00B7 [[Structure View]]\u003C/p\u003E\n","preview":"Organise notes by topic using color-coded categories. Create a category Click \u2699 in toolbar \u2192 Category Manager - Enter a name - Pick a color (preset palette or custom hex) - Click Add Assign to a note \u2026","markdownRaw":"\n\nOrganise notes by topic using **color-coded categories**.\n\n## Create a category\nClick **\u2699** in toolbar \u2192 Category Manager\n- Enter a name\n- Pick a color (preset palette or custom hex)\n- Click **Add**\n\n## Assign to a note\n**Right-click** a board card \u2192 **Set category**\n\n## Where badges appear\n- Board card (colored strip \u002B badge)\n- File tree in Structure view\n- Note toolbar in read mode\n\nOne category per note.\n\nSee also: [[Edit Category]] \u00B7 [[Structure View]]","modifiedDate":"2026-06-14 21:46"},{"relativePath":"Edit Category.md","boardX":5312.48916606279,"boardY":2021.702468321333,"categoryId":null,"customWidth":353.53846153846007,"customHeight":467.6923076923076,"cardSize":"minimum","locked":false,"htmlContent":"\u003Cp\u003EEditing \u0026amp; Deleting Categories\u003C/p\u003E\n\u003Ch2\u003EEdit\u003C/h2\u003E\n\u003Cp\u003E\u2699 Settings \u2192 click \u003Cstrong\u003EEdit\u003C/strong\u003E next to a category\u003C/p\u003E\n\u003Cul\u003E\n\u003Cli\u003EChange name or color\u003C/li\u003E\n\u003Cli\u003EClick \u003Cstrong\u003ESave\u003C/strong\u003E\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EDelete\u003C/h2\u003E\n\u003Cp\u003E\u2699 Settings \u2192 click \u003Cstrong\u003E\u2715\u003C/strong\u003E next to a category\u003C/p\u003E\n\u003Cblockquote\u003E\n\u003Cp\u003E\u26A0 If notes use this category, you\u0027ll be asked to confirm.\nTheir category will be cleared (not deleted).\u003C/p\u003E\n\u003C/blockquote\u003E\n\u003Ch2\u003EColors\u003C/h2\u003E\n\u003Cp\u003EChoose from 16 presets or enter any hex code manually.\u003C/p\u003E\n\u003Cp\u003E\u003Ccode\u003E#E24B4A\u003C/code\u003E \u003Ccode\u003E#EF9F27\u003C/code\u003E \u003Ccode\u003E#1D9E75\u003C/code\u003E \u003Ccode\u003E#89B4FA\u003C/code\u003E \u003Ccode\u003E#CBA6F7\u003C/code\u003E ...\u003C/p\u003E\n\u003Cp\u003ESee also: [[Categories]]\u003C/p\u003E\n","previewHtml":"\u003Cp\u003EEditing \u0026amp; Deleting Categories\u003C/p\u003E\n\u003Ch2\u003EEdit\u003C/h2\u003E\n\u003Cp\u003E\u2699 Settings \u2192 click \u003Cstrong\u003EEdit\u003C/strong\u003E next to a category\u003C/p\u003E\n\u003Cul\u003E\n\u003Cli\u003EChange name or color\u003C/li\u003E\n\u003Cli\u003EClick \u003Cstrong\u003ESave\u003C/strong\u003E\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EDelete\u003C/h2\u003E\n\u003Cp\u003E\u2699 Settings \u2192 click \u003Cstrong\u003E\u2715\u003C/strong\u003E next to a category\u003C/p\u003E\n\u003Cblockquote\u003E\n\u003Cp\u003E\u26A0 If notes use this category, you\u0027ll be asked to confirm.\nTheir category will be cleared (not deleted).\u003C/p\u003E\n\u003C/blockquote\u003E\n\u003Ch2\u003EColors\u003C/h2\u003E\n\u003Cp\u003EChoose from 16 presets or enter any hex code manually.\u003C/p\u003E\n\u003Cp\u003E\u003Ccode\u003E#E24B4A\u003C/code\u003E \u003Ccode\u003E#EF9F27\u003C/code\u003E \u003Ccode\u003E#1D9E75\u003C/code\u003E \u003Ccode\u003E#89B4FA\u003C/code\u003E \u003Ccode\u003E#CBA6F7\u003C/code\u003E ...\u003C/p\u003E\n\u003Cp\u003ESee also: [[Categories]]\u003C/p\u003E\n","preview":"Editing \u0026 Deleting Categories Edit \u2699 Settings \u2192 click Edit next to a category - Change name or color - Click Save Delete \u2699 Settings \u2192 click \u2715 next to a category \u26A0 If notes use this category, you\u0027ll be\u2026","markdownRaw":"\nEditing \u0026 Deleting Categories\n\n## Edit\n\u2699 Settings \u2192 click **Edit** next to a category\n- Change name or color\n- Click **Save**\n\n## Delete\n\u2699 Settings \u2192 click **\u2715** next to a category\n\n\u003E \u26A0 If notes use this category, you\u0027ll be asked to confirm.\n\u003E Their category will be cleared (not deleted).\n\n## Colors\nChoose from 16 presets or enter any hex code manually.\n\n\u0060#E24B4A\u0060 \u0060#EF9F27\u0060 \u0060#1D9E75\u0060 \u0060#89B4FA\u0060 \u0060#CBA6F7\u0060 ...\n\nSee also: [[Categories]]","modifiedDate":"2026-06-14 21:47"},{"relativePath":"Templates.md","boardX":5742.4013177999395,"boardY":2024.8167924694076,"categoryId":null,"customWidth":406.1818181818189,"customHeight":467.6363636363635,"cardSize":"minimum","locked":false,"htmlContent":"\u003Cp\u003ESave any note as a reusable template.\u003C/p\u003E\n\u003Ch2\u003ECreate a template\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003ERight-click\u003C/strong\u003E a board card \u2192 \u003Cstrong\u003ECopy as template\u003C/strong\u003E\u003C/li\u003E\n\u003Cli\u003EOr right-click a file in Structure view \u2192 \u003Cstrong\u003ECopy as template\u003C/strong\u003E\u003C/li\u003E\n\u003Cli\u003EOr click \uD83D\uDCCB in toolbar \u2192 \u003Cstrong\u003ENew template\u003C/strong\u003E\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003ETemplate settings\u003C/h2\u003E\n\u003Cp\u003EOpen a template in the editor \u2014 a settings bar appears:\u003C/p\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003EAuto-category\u003C/strong\u003E \u2014 category auto-assigned when creating from this template\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EDefault folder\u003C/strong\u003E \u2014 note lands in this folder automatically\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EUse a template\u003C/h2\u003E\n\u003Cp\u003E\u003Cstrong\u003ECtrl\u002BN\u003C/strong\u003E or right-click \u2192 New card\n\u2192 pick a template from the list\nContent is pre-filled, category and folder applied.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Edit Template]] \u00B7 [[Creating Notes]]\u003C/p\u003E\n","previewHtml":"\u003Cp\u003ESave any note as a reusable template.\u003C/p\u003E\n\u003Ch2\u003ECreate a template\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003ERight-click\u003C/strong\u003E a board card \u2192 \u003Cstrong\u003ECopy as template\u003C/strong\u003E\u003C/li\u003E\n\u003Cli\u003EOr right-click a file in Structure view \u2192 \u003Cstrong\u003ECopy as template\u003C/strong\u003E\u003C/li\u003E\n\u003Cli\u003EOr click \uD83D\uDCCB in toolbar \u2192 \u003Cstrong\u003ENew template\u003C/strong\u003E\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003ETemplate settings\u003C/h2\u003E\n\u003Cp\u003EOpen a template in the editor \u2014 a settings bar appears:\u003C/p\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003EAuto-category\u003C/strong\u003E \u2014 category auto-assigned when creating from this template\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EDefault folder\u003C/strong\u003E \u2014 note lands in this folder automatically\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EUse a template\u003C/h2\u003E\n\u003Cp\u003E\u003Cstrong\u003ECtrl\u002BN\u003C/strong\u003E or right-click \u2192 New card\n\u2192 pick a template from the list\nContent is pre-filled, category and folder applied.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Edit Template]] \u00B7 [[Creating Notes]]\u003C/p\u003E\n","preview":"Save any note as a reusable template. Create a template - Right-click a board card \u2192 Copy as template - Or right-click a file in Structure view \u2192 Copy as template - Or click \uD83D\uDCCB in toolbar \u2192 New templa\u2026","markdownRaw":"\n\nSave any note as a reusable template.\n\n## Create a template\n- **Right-click** a board card \u2192 **Copy as template**\n- Or right-click a file in Structure view \u2192 **Copy as template**\n- Or click \uD83D\uDCCB in toolbar \u2192 **New template**\n\n## Template settings\nOpen a template in the editor \u2014 a settings bar appears:\n\n- **Auto-category** \u2014 category auto-assigned when creating from this template\n- **Default folder** \u2014 note lands in this folder automatically\n\n## Use a template\n**Ctrl\u002BN** or right-click \u2192 New card\n\u2192 pick a template from the list\nContent is pre-filled, category and folder applied.\n\nSee also: [[Edit Template]] \u00B7 [[Creating Notes]]","modifiedDate":"2026-06-14 21:49"},{"relativePath":"Edit Template.md","boardX":6246.063070663385,"boardY":2026.154720732185,"categoryId":null,"customWidth":421,"customHeight":420.9401709401709,"cardSize":"minimum","locked":false,"htmlContent":"\u003Cp\u003ETemplates are regular \u003Ccode\u003E.md\u003C/code\u003E files stored in \u003Ccode\u003E.templates/\u003C/code\u003E\ninside your project folder.\u003C/p\u003E\n\u003Ch2\u003EOpen for editing\u003C/h2\u003E\n\u003Cp\u003EClick \u003Cstrong\u003E\uD83D\uDCCB\u003C/strong\u003E in toolbar \u2192 select template \u2192 \u003Cstrong\u003EOpen\u003C/strong\u003E\n(or double-click in the list)\u003C/p\u003E\n\u003Cp\u003EThe template opens in the note editor.\nEdit the content as you would any note.\n\u003Cstrong\u003ECtrl\u002BS\u003C/strong\u003E to save.\u003C/p\u003E\n\u003Ch2\u003ETemplate bar\u003C/h2\u003E\n\u003Cp\u003EWhen a template file is open, a bar appears at the bottom:\nAUTO-CATEGORY  [dropdown]    DEFAULT FOLDER  [text field]\u003C/p\u003E\n\u003Cp\u003EChanges are saved \u003Cstrong\u003Eautomatically\u003C/strong\u003E as you type.\u003C/p\u003E\n\u003Ch2\u003EDelete a template\u003C/h2\u003E\n\u003Cp\u003E\uD83D\uDCCB \u2192 select \u2192 \u003Cstrong\u003EDelete\u003C/strong\u003E\nThis removes the \u003Ccode\u003E.md\u003C/code\u003E file and its sidecar \u003Ccode\u003E.json\u003C/code\u003E.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Templates]] \u00B7 [[Editing Notes]]\u003C/p\u003E\n","previewHtml":"\u003Cp\u003ETemplates are regular \u003Ccode\u003E.md\u003C/code\u003E files stored in \u003Ccode\u003E.templates/\u003C/code\u003E\ninside your project folder.\u003C/p\u003E\n\u003Ch2\u003EOpen for editing\u003C/h2\u003E\n\u003Cp\u003EClick \u003Cstrong\u003E\uD83D\uDCCB\u003C/strong\u003E in toolbar \u2192 select template \u2192 \u003Cstrong\u003EOpen\u003C/strong\u003E\n(or double-click in the list)\u003C/p\u003E\n\u003Cp\u003EThe template opens in the note editor.\nEdit the content as you would any note.\n\u003Cstrong\u003ECtrl\u002BS\u003C/strong\u003E to save.\u003C/p\u003E\n\u003Ch2\u003ETemplate bar\u003C/h2\u003E\n\u003Cp\u003EWhen a template file is open, a bar appears at the bottom:\nAUTO-CATEGORY  [dropdown]    DEFAULT FOLDER  [text field]\u003C/p\u003E\n\u003Cp\u003EChanges are saved \u003Cstrong\u003Eautomatically\u003C/strong\u003E as you type.\u003C/p\u003E\n\u003Ch2\u003EDelete a template\u003C/h2\u003E\n\u003Cp\u003E\uD83D\uDCCB \u2192 select \u2192 \u003Cstrong\u003EDelete\u003C/strong\u003E\nThis removes the \u003Ccode\u003E.md\u003C/code\u003E file and its sidecar \u003Ccode\u003E.json\u003C/code\u003E.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Templates]] \u00B7 [[Editing Notes]]\u003C/p\u003E\n","preview":"Templates are regular .md files stored in .templates/ inside your project folder. Open for editing Click \uD83D\uDCCB in toolbar \u2192 select template \u2192 Open (or double-click in the list) The template opens in the \u2026","markdownRaw":"Templates are regular \u0060.md\u0060 files stored in \u0060.templates/\u0060\ninside your project folder.\n\n## Open for editing\nClick **\uD83D\uDCCB** in toolbar \u2192 select template \u2192 **Open**\n(or double-click in the list)\n\nThe template opens in the note editor.\nEdit the content as you would any note.\n**Ctrl\u002BS** to save.\n\n## Template bar\nWhen a template file is open, a bar appears at the bottom:\nAUTO-CATEGORY  [dropdown]    DEFAULT FOLDER  [text field]\n\nChanges are saved **automatically** as you type.\n\n## Delete a template\n\uD83D\uDCCB \u2192 select \u2192 **Delete**\nThis removes the \u0060.md\u0060 file and its sidecar \u0060.json\u0060.\n\nSee also: [[Templates]] \u00B7 [[Editing Notes]]","modifiedDate":"2026-06-14 21:51"},{"relativePath":"Search.md","boardX":7155.344469747995,"boardY":2011.248924702691,"categoryId":null,"customWidth":325.7777777777783,"customHeight":393.7777777777778,"cardSize":"minimum","locked":false,"htmlContent":"\u003Ch1\u003ESearch\u003C/h1\u003E\n\u003Cp\u003E\u003Cstrong\u003ECtrl\u002BF\u003C/strong\u003E or click \uD83D\uDD0D in toolbar.\u003C/p\u003E\n\u003Ch2\u003EHow it works\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003ESearches \u003Cstrong\u003Enote filenames\u003C/strong\u003E and \u003Cstrong\u003Erelative paths\u003C/strong\u003E\u003C/li\u003E\n\u003Cli\u003EResults appear in a dropdown below the search box\u003C/li\u003E\n\u003Cli\u003EUpdates as you type\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EKeyboard navigation\u003C/h2\u003E\n\u003Ctable\u003E\n\u003Cthead\u003E\n\u003Ctr\u003E\n\u003Cth\u003EKey\u003C/th\u003E\n\u003Cth\u003EAction\u003C/th\u003E\n\u003C/tr\u003E\n\u003C/thead\u003E\n\u003Ctbody\u003E\n\u003Ctr\u003E\n\u003Ctd\u003E\u003Ccode\u003E\u2193\u003C/code\u003E\u003C/td\u003E\n\u003Ctd\u003EMove down in results\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003E\u003Ccode\u003EEnter\u003C/code\u003E\u003C/td\u003E\n\u003Ctd\u003EJump to selected result\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003E\u003Ccode\u003EEsc\u003C/code\u003E\u003C/td\u003E\n\u003Ctd\u003EClose search\u003C/td\u003E\n\u003C/tr\u003E\n\u003C/tbody\u003E\n\u003C/table\u003E\n\u003Ch2\u003EBehaviour by view\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003EBoard view\u003C/strong\u003E \u2192 scrolls and highlights the card\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EStructure view\u003C/strong\u003E \u2192 selects the file in tree\u003C/li\u003E\n\u003C/ul\u003E\n\u003Cp\u003ESee also: [[Board View]] \u00B7 [[Structure View]]\u003C/p\u003E\n","previewHtml":"\u003Ch1\u003ESearch\u003C/h1\u003E\n\u003Cp\u003E\u003Cstrong\u003ECtrl\u002BF\u003C/strong\u003E or click \uD83D\uDD0D in toolbar.\u003C/p\u003E\n\u003Ch2\u003EHow it works\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003ESearches \u003Cstrong\u003Enote filenames\u003C/strong\u003E and \u003Cstrong\u003Erelative paths\u003C/strong\u003E\u003C/li\u003E\n\u003Cli\u003EResults appear in a dropdown below the search box\u003C/li\u003E\n\u003Cli\u003EUpdates as you type\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EKeyboard navigation\u003C/h2\u003E\n\u003Ctable\u003E\n\u003Cthead\u003E\n\u003Ctr\u003E\n\u003Cth\u003EKey\u003C/th\u003E\n\u003Cth\u003EAction\u003C/th\u003E\n\u003C/tr\u003E\n\u003C/thead\u003E\n\u003Ctbody\u003E\n\u003Ctr\u003E\n\u003Ctd\u003E\u003Ccode\u003E\u2193\u003C/code\u003E\u003C/td\u003E\n\u003Ctd\u003EMove down in results\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003E\u003Ccode\u003EEnter\u003C/code\u003E\u003C/td\u003E\n\u003Ctd\u003EJump to selected result\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003E\u003Ccode\u003EEsc\u003C/code\u003E\u003C/td\u003E\n\u003Ctd\u003EClose search\u003C/td\u003E\n\u003C/tr\u003E\n\u003C/tbody\u003E\n\u003C/table\u003E\n\u003Ch2\u003EBehaviour by view\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003EBoard view\u003C/strong\u003E \u2192 scrolls and highlights the card\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EStructure view\u003C/strong\u003E \u2192 selects the file in tree\u003C/li\u003E\n\u003C/ul\u003E\n\u003Cp\u003ESee also: [[Board View]] \u00B7 [[Structure View]]\u003C/p\u003E\n","preview":"Search Ctrl\u002BF or click \uD83D\uDD0D in toolbar. How it works - Searches note filenames and relative paths - Results appear in a dropdown below the search box - Updates as you type Keyboard navigation | Key | Ac\u2026","markdownRaw":"# Search\n\n**Ctrl\u002BF** or click \uD83D\uDD0D in toolbar.\n\n## How it works\n- Searches **note filenames** and **relative paths**\n- Results appear in a dropdown below the search box\n- Updates as you type\n\n## Keyboard navigation\n| Key | Action |\n|---|---|\n| \u0060\u2193\u0060 | Move down in results |\n| \u0060Enter\u0060 | Jump to selected result |\n| \u0060Esc\u0060 | Close search |\n\n## Behaviour by view\n- **Board view** \u2192 scrolls and highlights the card\n- **Structure view** \u2192 selects the file in tree\n\nSee also: [[Board View]] \u00B7 [[Structure View]]","modifiedDate":"2026-06-14 21:56"},{"relativePath":"HTML Export.md","boardX":7592.062394335469,"boardY":2020.0405941926238,"categoryId":null,"customWidth":346.39999999999964,"customHeight":314.39999999999964,"cardSize":"minimum","locked":false,"htmlContent":"\u003Cp\u003EClick \u003Cstrong\u003E\uD83D\uDCE4\u003C/strong\u003E in toolbar \u2192 choose save location.\u003C/p\u003E\n\u003Ch2\u003EWhat gets exported\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003EAll notes rendered as HTML\u003C/li\u003E\n\u003Cli\u003EAll images copied to \u003Ccode\u003EProjectName/\u003C/code\u003E folder next to the HTML\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EThe exported board is interactive\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003EPan\u003C/strong\u003E and \u003Cstrong\u003Ezoom\u003C/strong\u003E the canvas\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EClick cards\u003C/strong\u003E to read full content in a modal\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EToggle connections\u003C/strong\u003E button shows wiki-link lines\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003ECopy MD\u003C/strong\u003E button on each card copies raw Markdown\u003C/li\u003E\n\u003C/ul\u003E\n\u003Cblockquote\u003E\n\u003Cp\u003EKeep the \u003Ccode\u003E.html\u003C/code\u003E file and the images folder\nin the same directory.\u003C/p\u003E\n\u003C/blockquote\u003E\n\u003Cp\u003ESee also: [[Board View]] \u00B7 [[Wiki-links]]\u003C/p\u003E\n","previewHtml":"\u003Cp\u003EClick \u003Cstrong\u003E\uD83D\uDCE4\u003C/strong\u003E in toolbar \u2192 choose save location.\u003C/p\u003E\n\u003Ch2\u003EWhat gets exported\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003EAll notes rendered as HTML\u003C/li\u003E\n\u003Cli\u003EAll images copied to \u003Ccode\u003EProjectName/\u003C/code\u003E folder next to the HTML\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EThe exported board is interactive\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003EPan\u003C/strong\u003E and \u003Cstrong\u003Ezoom\u003C/strong\u003E the canvas\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EClick cards\u003C/strong\u003E to read full content in a modal\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EToggle connections\u003C/strong\u003E button shows wiki-link lines\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003ECopy MD\u003C/strong\u003E button on each card copies raw Markdown\u003C/li\u003E\n\u003C/ul\u003E\n\u003Cblockquote\u003E\n\u003Cp\u003EKeep the \u003Ccode\u003E.html\u003C/code\u003E file and the images folder\nin the same directory.\u003C/p\u003E\n\u003C/blockquote\u003E\n\u003Cp\u003ESee also: [[Board View]] \u00B7 [[Wiki-links]]\u003C/p\u003E\n","preview":"Click \uD83D\uDCE4 in toolbar \u2192 choose save location. What gets exported - All notes rendered as HTML - All images copied to ProjectName/ folder next to the HTML The exported board is interactive - Pan and zoom\u2026","markdownRaw":"Click **\uD83D\uDCE4** in toolbar \u2192 choose save location.\n\n## What gets exported\n- All notes rendered as HTML\n- All images copied to \u0060ProjectName/\u0060 folder next to the HTML\n\n## The exported board is interactive\n- **Pan** and **zoom** the canvas\n- **Click cards** to read full content in a modal\n- **Toggle connections** button shows wiki-link lines\n- **Copy MD** button on each card copies raw Markdown\n\n\u003E Keep the \u0060.html\u0060 file and the images folder\n\u003E in the same directory.\n\nSee also: [[Board View]] \u00B7 [[Wiki-links]]","modifiedDate":"2026-06-14 21:58"},{"relativePath":"Project File.md","boardX":4910.952222971073,"boardY":695.8399114936793,"categoryId":null,"customWidth":352,"customHeight":457,"cardSize":"minimum","locked":false,"htmlContent":"\u003Ch1\u003EThe .apex File\u003C/h1\u003E\n\u003Cp\u003EEach project = \u003Cstrong\u003Eone folder\u003C/strong\u003E \u002B \u003Cstrong\u003Eone \u003Ccode\u003E.apex\u003C/code\u003E file\u003C/strong\u003E at root.\u003C/p\u003E\n\u003Ch2\u003EWhat .apex stores\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003EProject name and last view\u003C/li\u003E\n\u003Cli\u003ECard positions, sizes, lock state\u003C/li\u003E\n\u003Cli\u003ECategories and relations\u003C/li\u003E\n\u003Cli\u003EImage cards and title cards\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EWhat .apex does NOT store\u003C/h2\u003E\n\u003Cp\u003ENote \u003Cstrong\u003Econtent\u003C/strong\u003E \u2014 that lives only in \u003Ccode\u003E.md\u003C/code\u003E files.\u003C/p\u003E\n\u003Ch2\u003EGit friendly\u003C/h2\u003E\n\u003Cp\u003ESafe to commit \u003Ccode\u003E.apex\u003C/code\u003E alongside your notes.\ngit add .\u003C/p\u003E\n\u003Cp\u003Egit commit -m \u0026quot;update notes\u0026quot;\u003C/p\u003E\n\u003Ch2\u003EOpening a project\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003EDouble-click any \u003Ccode\u003E.apex\u003C/code\u003E file\u003C/li\u003E\n\u003Cli\u003EOr \u003Cstrong\u003EOpen existing project\u003C/strong\u003E on startup screen\u003C/li\u003E\n\u003Cli\u003ERecent projects listed on startup for quick access\u003C/li\u003E\n\u003C/ul\u003E\n\u003Cp\u003ESee also: [[Welcome]]\u003C/p\u003E\n","previewHtml":"\u003Ch1\u003EThe .apex File\u003C/h1\u003E\n\u003Cp\u003EEach project = \u003Cstrong\u003Eone folder\u003C/strong\u003E \u002B \u003Cstrong\u003Eone \u003Ccode\u003E.apex\u003C/code\u003E file\u003C/strong\u003E at root.\u003C/p\u003E\n\u003Ch2\u003EWhat .apex stores\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003EProject name and last view\u003C/li\u003E\n\u003Cli\u003ECard positions, sizes, lock state\u003C/li\u003E\n\u003Cli\u003ECategories and relations\u003C/li\u003E\n\u003Cli\u003EImage cards and title cards\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003EWhat .apex does NOT store\u003C/h2\u003E\n\u003Cp\u003ENote \u003Cstrong\u003Econtent\u003C/strong\u003E \u2014 that lives only in \u003Ccode\u003E.md\u003C/code\u003E files.\u003C/p\u003E\n\u003Ch2\u003EGit friendly\u003C/h2\u003E\n\u003Cp\u003ESafe to commit \u003Ccode\u003E.apex\u003C/code\u003E alongside your notes.\ngit add .\u003C/p\u003E\n\u003Cp\u003Egit commit -m \u0026quot;update notes\u0026quot;\u003C/p\u003E\n\u003Ch2\u003EOpening a project\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003EDouble-click any \u003Ccode\u003E.apex\u003C/code\u003E file\u003C/li\u003E\n\u003Cli\u003EOr \u003Cstrong\u003EOpen existing project\u003C/strong\u003E on startup screen\u003C/li\u003E\n\u003Cli\u003ERecent projects listed on startup for quick access\u003C/li\u003E\n\u003C/ul\u003E\n\u003Cp\u003ESee also: [[Welcome]]\u003C/p\u003E\n","preview":"The .apex File Each project = one folder \u002B one .apex file at root. What .apex stores - Project name and last view - Card positions, sizes, lock state - Categories and relations - Image cards and title\u2026","markdownRaw":"\n# The .apex File\n\nEach project = **one folder** \u002B **one \u0060.apex\u0060 file** at root.\n\n## What .apex stores\n- Project name and last view\n- Card positions, sizes, lock state\n- Categories and relations\n- Image cards and title cards\n\n## What .apex does NOT store\nNote **content** \u2014 that lives only in \u0060.md\u0060 files.\n\n## Git friendly\nSafe to commit \u0060.apex\u0060 alongside your notes.\ngit add .\n\ngit commit -m \u0022update notes\u0022\n\n## Opening a project\n- Double-click any \u0060.apex\u0060 file\n- Or **Open existing project** on startup screen\n- Recent projects listed on startup for quick access\n\nSee also: [[Welcome]]","modifiedDate":"2026-06-14 22:02"},{"relativePath":"Keyboard Shortcuts.md","boardX":4483.919236319236,"boardY":3822.6958777496448,"categoryId":null,"customWidth":624.3076923076924,"customHeight":394.965034965036,"cardSize":"minimum","locked":false,"htmlContent":"\u003Ch2\u003E\u2328\uFE0F Keyboard Shortcuts \u0026amp; Navigation\u003C/h2\u003E\n\u003Ch3\u003E\uD83D\uDCDD Note Management \u0026amp; Editing\u003C/h3\u003E\n\u003Cp\u003E| \u003Ccode\u003ECtrl \u002B N\u003C/code\u003E | \u003Cstrong\u003ENew note\u003C/strong\u003E | Creates a new note at the center of the current view (\u003Cem\u003Eviewport center\u003C/em\u003E) |\n| \u003Ccode\u003ECtrl \u002B S\u003C/code\u003E | \u003Cstrong\u003ESave\u003C/strong\u003E | Saves changes in the note (in edit mode) |\n| \u003Ccode\u003EF2\u003C/code\u003E | \u003Cstrong\u003EEdit\u003C/strong\u003E | Enters edit mode for the selected note |\n| \u003Ccode\u003EEsc\u003C/code\u003E | \u003Cstrong\u003ECancel / Close\u003C/strong\u003E | Cancels editing or closes the search bar |\n| \u003Ccode\u003ECtrl \u002B V\u003C/code\u003E | \u003Cstrong\u003EPaste\u003C/strong\u003E | Pastes an image or text from the clipboard |\n| \u003Ccode\u003ECtrl \u002B Z\u003C/code\u003E | \u003Cstrong\u003EUndo\u003C/strong\u003E | Undoes the last action (in edit mode) |\n| \u003Ccode\u003ECtrl \u002B Y\u003C/code\u003E | \u003Cstrong\u003ERedo\u003C/strong\u003E | Redoes the undone action (in edit mode) |\u003C/p\u003E\n\u003Ch3\u003E\uD83D\uDD0D Search \u0026amp; Board View\u003C/h3\u003E\n\u003Cp\u003E| \u003Ccode\u003ECtrl \u002B F\u003C/code\u003E | \u003Cstrong\u003ESearch\u003C/strong\u003E | Opens the search bar |\n| \u003Ccode\u003ECtrl \u002B Home\u003C/code\u003E | \u003Cstrong\u003EFit view\u003C/strong\u003E | Automatically scales the view to fit all cards |\n| \u003Ccode\u003EScroll wheel\u003C/code\u003E | \u003Cstrong\u003EZoom\u003C/strong\u003E | Zooms in/out on the board |\n| \u003Ccode\u003EMiddle drag\u003C/code\u003E | \u003Cstrong\u003EPan\u003C/strong\u003E | Pans the board by dragging with the middle mouse button |\n| \u003Ccode\u003ELeft drag bg\u003C/code\u003E | \u003Cstrong\u003EPan\u003C/strong\u003E | Pans the board by dragging with the left mouse button on the empty background |\u003C/p\u003E\n","previewHtml":"\u003Ch2\u003E\u2328\uFE0F Keyboard Shortcuts \u0026amp; Navigation\u003C/h2\u003E\n\u003Ch3\u003E\uD83D\uDCDD Note Management \u0026amp; Editing\u003C/h3\u003E\n\u003Cp\u003E| \u003Ccode\u003ECtrl \u002B N\u003C/code\u003E | \u003Cstrong\u003ENew note\u003C/strong\u003E | Creates a new note at the center of the current view (\u003Cem\u003Eviewport center\u003C/em\u003E) |\n| \u003Ccode\u003ECtrl \u002B S\u003C/code\u003E | \u003Cstrong\u003ESave\u003C/strong\u003E | Saves changes in the note (in edit mode) |\n| \u003Ccode\u003EF2\u003C/code\u003E | \u003Cstrong\u003EEdit\u003C/strong\u003E | Enters edit mode for the selected note |\n| \u003Ccode\u003EEsc\u003C/code\u003E | \u003Cstrong\u003ECancel / Close\u003C/strong\u003E | Cancels editing or closes the search bar |\n| \u003Ccode\u003ECtrl \u002B V\u003C/code\u003E | \u003Cstrong\u003EPaste\u003C/strong\u003E | Pastes an image or text from the clipboard |\n| \u003Ccode\u003ECtrl \u002B Z\u003C/code\u003E | \u003Cstrong\u003EUndo\u003C/strong\u003E | Undoes the last action (in edit mode) |\n| \u003Ccode\u003ECtrl \u002B Y\u003C/code\u003E | \u003Cstrong\u003ERedo\u003C/strong\u003E | Redoes the undone action (in edit mode) |\u003C/p\u003E\n\u003Ch3\u003E\uD83D\uDD0D Search \u0026amp; Board View\u003C/h3\u003E\n\u003Cp\u003E| \u003Ccode\u003ECtrl \u002B F\u003C/code\u003E | \u003Cstrong\u003ESearch\u003C/strong\u003E | Opens the search bar |\n| \u003Ccode\u003ECtrl \u002B Home\u003C/code\u003E | \u003Cstrong\u003EFit view\u003C/strong\u003E | Automatically scales the view to fit all cards |\n| \u003Ccode\u003EScroll wheel\u003C/code\u003E | \u003Cstrong\u003EZoom\u003C/strong\u003E | Zooms in/out on the board |\n| \u003Ccode\u003EMiddle drag\u003C/code\u003E | \u003Cstrong\u003EPan\u003C/strong\u003E | Pans the board by dragging with the middle mouse button |\n| \u003Ccode\u003ELeft drag bg\u003C/code\u003E | \u003Cstrong\u003EPan\u003C/strong\u003E | Pans the board by dragging with the left mouse button on the empty background |\u003C/p\u003E\n","preview":"\u2328\uFE0F Keyboard Shortcuts \u0026 Navigation \uD83D\uDCDD Note Management \u0026 Editing | Ctrl \u002B N | New note | Creates a new note at the center of the current view (viewport center) | | Ctrl \u002B S | Save | Saves changes in th\u2026","markdownRaw":"## \u2328\uFE0F Keyboard Shortcuts \u0026 Navigation\r\n\r\n### \uD83D\uDCDD Note Management \u0026 Editing\r\n| \u0060Ctrl \u002B N\u0060 | **New note** | Creates a new note at the center of the current view (*viewport center*) |\r\n| \u0060Ctrl \u002B S\u0060 | **Save** | Saves changes in the note (in edit mode) |\r\n| \u0060F2\u0060 | **Edit** | Enters edit mode for the selected note |\r\n| \u0060Esc\u0060 | **Cancel / Close** | Cancels editing or closes the search bar |\r\n| \u0060Ctrl \u002B V\u0060 | **Paste** | Pastes an image or text from the clipboard |\r\n| \u0060Ctrl \u002B Z\u0060 | **Undo** | Undoes the last action (in edit mode) |\r\n| \u0060Ctrl \u002B Y\u0060 | **Redo** | Redoes the undone action (in edit mode) |\r\n\r\n### \uD83D\uDD0D Search \u0026 Board View\r\n| \u0060Ctrl \u002B F\u0060 | **Search** | Opens the search bar |\r\n| \u0060Ctrl \u002B Home\u0060 | **Fit view** | Automatically scales the view to fit all cards |\r\n| \u0060Scroll wheel\u0060 | **Zoom** | Zooms in/out on the board |\r\n| \u0060Middle drag\u0060 | **Pan** | Pans the board by dragging with the middle mouse button |\r\n| \u0060Left drag bg\u0060 | **Pan** | Pans the board by dragging with the left mouse button on the empty background |","modifiedDate":"2026-06-14 22:10"},{"relativePath":"Structure View.md","boardX":1755.7410341598822,"boardY":1621.456039809807,"categoryId":null,"customWidth":404.59999999999945,"customHeight":740,"cardSize":"minimum","locked":true,"htmlContent":"\u003Cp\u003EClassic file tree \u2014 all \u003Ccode\u003E.md\u003C/code\u003E files and folders in your project.\u003C/p\u003E\n\u003Ch2\u003ENavigation\u003C/h2\u003E\n\u003Cp\u003ESwitch from Board using the \u003Cstrong\u003EStructure\u003C/strong\u003E toggle in toolbar,\nor click \u003Cstrong\u003EPreview\u003C/strong\u003E on any board card.\u003C/p\u003E\n\u003Ch2\u003EFile states\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003ENormal file \u2014 has a board card\u003C/li\u003E\n\u003Cli\u003E\u26A0 \u003Cstrong\u003ERed file\u003C/strong\u003E \u2014 no board card yet\nRight-click \u2192 \u003Cstrong\u003ECreate card\u003C/strong\u003E to add it to the board\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003ESelection\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003EClick\u003C/strong\u003E \u2014 select single file, opens in right panel\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003ECtrl\u002Bclick\u003C/strong\u003E \u2014 toggle file in/out of selection\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EShift\u002Bclick\u003C/strong\u003E \u2014 select range between two files\u003C/li\u003E\n\u003C/ul\u003E\n\u003Cp\u003ESelecting \u003Cstrong\u003Emultiple files\u003C/strong\u003E \u2192 merged read-only view\nof all selected notes in the right panel.\u003C/p\u003E\n\u003Ch2\u003EContext menu (right-click file)\u003C/h2\u003E\n\u003Ctable\u003E\n\u003Cthead\u003E\n\u003Ctr\u003E\n\u003Cth\u003EOption\u003C/th\u003E\n\u003Cth\u003EAction\u003C/th\u003E\n\u003C/tr\u003E\n\u003C/thead\u003E\n\u003Ctbody\u003E\n\u003Ctr\u003E\n\u003Ctd\u003EOpen\u003C/td\u003E\n\u003Ctd\u003EOpen in right panel\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003EFind on board\u003C/td\u003E\n\u003Ctd\u003ESwitch to Board, highlight card\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003ECopy as template\u003C/td\u003E\n\u003Ctd\u003ESave as reusable template\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003ECreate card\u003C/td\u003E\n\u003Ctd\u003EAdd missing board card\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003ENew note here\u003C/td\u003E\n\u003Ctd\u003ECreate note in same folder\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003ERename\u003C/td\u003E\n\u003Ctd\u003ERename file on disk\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003EOpen in system editor\u003C/td\u003E\n\u003Ctd\u003EOpen in default \u003Ccode\u003E.md\u003C/code\u003E app\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003EDelete\u003C/td\u003E\n\u003Ctd\u003EMove to Recycle Bin\u003C/td\u003E\n\u003C/tr\u003E\n\u003C/tbody\u003E\n\u003C/table\u003E\n\u003Ch2\u003EContext menu (right-click folder)\u003C/h2\u003E\n\u003Ctable\u003E\n\u003Cthead\u003E\n\u003Ctr\u003E\n\u003Cth\u003EOption\u003C/th\u003E\n\u003Cth\u003EAction\u003C/th\u003E\n\u003C/tr\u003E\n\u003C/thead\u003E\n\u003Ctbody\u003E\n\u003Ctr\u003E\n\u003Ctd\u003ENew subfolder\u003C/td\u003E\n\u003Ctd\u003ECreate subfolder\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003ERename\u003C/td\u003E\n\u003Ctd\u003ERename folder, updates all card paths\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003EDelete\u003C/td\u003E\n\u003Ctd\u003EMove folder \u002B contents to Recycle Bin\u003C/td\u003E\n\u003C/tr\u003E\n\u003C/tbody\u003E\n\u003C/table\u003E\n\u003Ch2\u003E\uD83D\uDCC1 button\u003C/h2\u003E\n\u003Cp\u003ETop-right corner \u2014 opens project root in Windows Explorer.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Welcome]] \u00B7 [[Board View]] \u00B7 [[Editing Notes]]\u003C/p\u003E\n","previewHtml":"\u003Cp\u003EClassic file tree \u2014 all \u003Ccode\u003E.md\u003C/code\u003E files and folders in your project.\u003C/p\u003E\n\u003Ch2\u003ENavigation\u003C/h2\u003E\n\u003Cp\u003ESwitch from Board using the \u003Cstrong\u003EStructure\u003C/strong\u003E toggle in toolbar,\nor click \u003Cstrong\u003EPreview\u003C/strong\u003E on any board card.\u003C/p\u003E\n\u003Ch2\u003EFile states\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003ENormal file \u2014 has a board card\u003C/li\u003E\n\u003Cli\u003E\u26A0 \u003Cstrong\u003ERed file\u003C/strong\u003E \u2014 no board card yet\nRight-click \u2192 \u003Cstrong\u003ECreate card\u003C/strong\u003E to add it to the board\u003C/li\u003E\n\u003C/ul\u003E\n\u003Ch2\u003ESelection\u003C/h2\u003E\n\u003Cul\u003E\n\u003Cli\u003E\u003Cstrong\u003EClick\u003C/strong\u003E \u2014 select single file, opens in right panel\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003ECtrl\u002Bclick\u003C/strong\u003E \u2014 toggle file in/out of selection\u003C/li\u003E\n\u003Cli\u003E\u003Cstrong\u003EShift\u002Bclick\u003C/strong\u003E \u2014 select range between two files\u003C/li\u003E\n\u003C/ul\u003E\n\u003Cp\u003ESelecting \u003Cstrong\u003Emultiple files\u003C/strong\u003E \u2192 merged read-only view\nof all selected notes in the right panel.\u003C/p\u003E\n\u003Ch2\u003EContext menu (right-click file)\u003C/h2\u003E\n\u003Ctable\u003E\n\u003Cthead\u003E\n\u003Ctr\u003E\n\u003Cth\u003EOption\u003C/th\u003E\n\u003Cth\u003EAction\u003C/th\u003E\n\u003C/tr\u003E\n\u003C/thead\u003E\n\u003Ctbody\u003E\n\u003Ctr\u003E\n\u003Ctd\u003EOpen\u003C/td\u003E\n\u003Ctd\u003EOpen in right panel\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003EFind on board\u003C/td\u003E\n\u003Ctd\u003ESwitch to Board, highlight card\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003ECopy as template\u003C/td\u003E\n\u003Ctd\u003ESave as reusable template\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003ECreate card\u003C/td\u003E\n\u003Ctd\u003EAdd missing board card\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003ENew note here\u003C/td\u003E\n\u003Ctd\u003ECreate note in same folder\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003ERename\u003C/td\u003E\n\u003Ctd\u003ERename file on disk\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003EOpen in system editor\u003C/td\u003E\n\u003Ctd\u003EOpen in default \u003Ccode\u003E.md\u003C/code\u003E app\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003EDelete\u003C/td\u003E\n\u003Ctd\u003EMove to Recycle Bin\u003C/td\u003E\n\u003C/tr\u003E\n\u003C/tbody\u003E\n\u003C/table\u003E\n\u003Ch2\u003EContext menu (right-click folder)\u003C/h2\u003E\n\u003Ctable\u003E\n\u003Cthead\u003E\n\u003Ctr\u003E\n\u003Cth\u003EOption\u003C/th\u003E\n\u003Cth\u003EAction\u003C/th\u003E\n\u003C/tr\u003E\n\u003C/thead\u003E\n\u003Ctbody\u003E\n\u003Ctr\u003E\n\u003Ctd\u003ENew subfolder\u003C/td\u003E\n\u003Ctd\u003ECreate subfolder\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003ERename\u003C/td\u003E\n\u003Ctd\u003ERename folder, updates all card paths\u003C/td\u003E\n\u003C/tr\u003E\n\u003Ctr\u003E\n\u003Ctd\u003EDelete\u003C/td\u003E\n\u003Ctd\u003EMove folder \u002B contents to Recycle Bin\u003C/td\u003E\n\u003C/tr\u003E\n\u003C/tbody\u003E\n\u003C/table\u003E\n\u003Ch2\u003E\uD83D\uDCC1 button\u003C/h2\u003E\n\u003Cp\u003ETop-right corner \u2014 opens project root in Windows Explorer.\u003C/p\u003E\n\u003Cp\u003ESee also: [[Welcome]] \u00B7 [[Board View]] \u00B7 [[Editing Notes]]\u003C/p\u003E\n","preview":"Classic file tree \u2014 all .md files and folders in your project. Navigation Switch from Board using the Structure toggle in toolbar, or click Preview on any board card. File states - Normal file \u2014 has a\u2026","markdownRaw":"Classic file tree \u2014 all \u0060.md\u0060 files and folders in your project.\n\n## Navigation\nSwitch from Board using the **Structure** toggle in toolbar,\nor click **Preview** on any board card.\n\n## File states\n- Normal file \u2014 has a board card\n- \u26A0 **Red file** \u2014 no board card yet\n  Right-click \u2192 **Create card** to add it to the board\n\n## Selection\n- **Click** \u2014 select single file, opens in right panel\n- **Ctrl\u002Bclick** \u2014 toggle file in/out of selection\n- **Shift\u002Bclick** \u2014 select range between two files\n\nSelecting **multiple files** \u2192 merged read-only view\nof all selected notes in the right panel.\n\n## Context menu (right-click file)\n| Option | Action |\n|---|---|\n| Open | Open in right panel |\n| Find on board | Switch to Board, highlight card |\n| Copy as template | Save as reusable template |\n| Create card | Add missing board card |\n| New note here | Create note in same folder |\n| Rename | Rename file on disk |\n| Open in system editor | Open in default \u0060.md\u0060 app |\n| Delete | Move to Recycle Bin |\n\n## Context menu (right-click folder)\n| Option | Action |\n|---|---|\n| New subfolder | Create subfolder |\n| Rename | Rename folder, updates all card paths |\n| Delete | Move folder \u002B contents to Recycle Bin |\n\n## \uD83D\uDCC1 button\nTop-right corner \u2014 opens project root in Windows Explorer.\n\nSee also: [[Welcome]] \u00B7 [[Board View]] \u00B7 [[Editing Notes]]","modifiedDate":"2026-06-14 22:15"},{"relativePath":"App in Beta.md","boardX":3336.5664335664333,"boardY":1240.3857173048348,"categoryId":null,"customWidth":340.61538461538476,"customHeight":120,"cardSize":"minimum","locked":true,"htmlContent":"\u003Cblockquote\u003E\n\u003Cp\u003E[!WARNING]\n\u003Cstrong\u003EBeta Version\u003C/strong\u003E: The application is in beta and may contain bugs.\u003C/p\u003E\n\u003C/blockquote\u003E\n","previewHtml":"\u003Cblockquote\u003E\n\u003Cp\u003E[!WARNING]\n\u003Cstrong\u003EBeta Version\u003C/strong\u003E: The application is in beta and may contain bugs.\u003C/p\u003E\n\u003C/blockquote\u003E\n","preview":"[!WARNING] Beta Version: The application is in beta and may contain bugs.","markdownRaw":"\u003E [!WARNING]\r\n\u003E **Beta Version**: The application is in beta and may contain bugs.","modifiedDate":"2026-06-14 22:22"}],"titleCards":[{"id":"4088ed05","text":"Apex \u2014 Project Notes Manager","boardX":2655.994517041267,"boardY":1443.8312912405804,"fontFamily":"Arial","fontSize":52,"fontColor":"#CBA6F7","backgroundColor":"#1A0A1A","bold":true,"italic":false,"customWidth":946,"customHeight":120,"locked":true},{"id":"b53abd9f","text":"Getting Started","boardX":1290.6861691799768,"boardY":1128.7974786479444,"fontFamily":"Arial","fontSize":32,"fontColor":"#CBA6F7","backgroundColor":"#1A0A1A","bold":false,"italic":false,"customWidth":326.82352941176487,"customHeight":120,"locked":true},{"id":"068949b5","text":"Relations \u0026 Board Elements","boardX":4093.6331879708005,"boardY":1825.2302053400185,"fontFamily":"Arial","fontSize":28,"fontColor":"#E24B4A","backgroundColor":"#1A0A1A","bold":false,"italic":false,"customWidth":412.0224089635849,"customHeight":120,"locked":true},{"id":"231f14a0","text":"Categories \u0026 Templates","boardX":5234.945624750645,"boardY":1826.363894683012,"fontFamily":"Arial","fontSize":32,"fontColor":"#EF9F27","backgroundColor":"#1A0A0A","bold":true,"italic":false,"customWidth":462.39999999999964,"customHeight":120,"locked":false},{"id":"07d5e44c","text":"Search \u0026 Export","boardX":7188.366812409238,"boardY":1783.9613674425766,"fontFamily":"Arial","fontSize":32,"fontColor":"#EF9F27","backgroundColor":"#181825","bold":false,"italic":false,"customWidth":391,"customHeight":120,"locked":false},{"id":"6ca70618","text":"Keyboard Shortcuts","boardX":4494.504983904985,"boardY":3651.3538031575713,"fontFamily":"Arial","fontSize":18,"fontColor":"#EF9F27","backgroundColor":"#11111B","bold":true,"italic":false,"customWidth":450.66666666666606,"customHeight":120,"locked":false},{"id":"6dbd9fe0","text":"VS","boardX":1370.6666666666667,"boardY":1890.478558402326,"fontFamily":"Segoe UI","fontSize":66,"fontColor":"#11111B","backgroundColor":"#585B70","bold":true,"italic":false,"customWidth":300,"customHeight":80,"locked":true},{"id":"bbe8f00c","text":"BETA 0.1.0","boardX":2539.2000000000003,"boardY":815.1741954933121,"fontFamily":"Arial","fontSize":140,"fontColor":"#EF9F27","backgroundColor":"#2C1810","bold":true,"italic":false,"customWidth":1132,"customHeight":321.33333333333337,"locked":true},{"id":"d9438f44","text":"CTRL \u002B N","boardX":311.0974358974358,"boardY":2528.470210369211,"fontFamily":"Segoe UI","fontSize":32,"fontColor":"#E24B4A","backgroundColor":"#11111B","bold":false,"italic":false,"customWidth":262.66666666666663,"customHeight":120,"locked":true}],"imageCards":[{"id":"f445ea9e","relativePath":".images/paste_20260614_212127.png","imgSrc":"ProjectSample/paste_20260614_212127.png","boardX":2965.3909090909096,"boardY":1227.5031818181817,"customWidth":306.39999999999986,"customHeight":167.20000000000005,"categoryId":null,"locked":true},{"id":"4f784370","relativePath":".images/paste_20260614_221831.png","imgSrc":"ProjectSample/paste_20260614_221831.png","boardX":1371.8,"boardY":1688.2170787708467,"customWidth":300,"customHeight":120,"categoryId":null,"locked":true},{"id":"3b9a1846","relativePath":".images/paste_20260614_222439.png","imgSrc":"ProjectSample/paste_20260614_222439.png","boardX":288.73846153846154,"boardY":2751.2271700761708,"customWidth":null,"customHeight":null,"categoryId":null,"locked":true},{"id":"a6982eb7","relativePath":".images/paste_20260614_222659.png","imgSrc":"ProjectSample/paste_20260614_222659.png","boardX":1468.7769841269846,"boardY":3221.511929198197,"customWidth":936.666666666667,"customHeight":508.00000000000045,"categoryId":null,"locked":true}],"categories":[],"relations":[{"id":"29ddbfaf","sourceType":"note","sourceRef":"Getting Started.md","targetType":"note","targetRef":"Board View.md","bendX":-251.6363636363635,"bendY":-133.090909090909,"lineColor":"#CBA6F7","lineThickness":3},{"id":"cefc74ba","sourceType":"note","sourceRef":"Getting Started.md","targetType":"note","targetRef":"Structure View.md","bendX":356.36363636363626,"bendY":-250.90909090909076,"lineColor":"#CBA6F7","lineThickness":3},{"id":"338c11f2","sourceType":"title","sourceRef":"d9438f44","targetType":"image","targetRef":"3b9a1846","bendX":1.2307692307691696,"bendY":0.6153846153847553,"lineColor":"#E24B4A","lineThickness":3},{"id":"047f1537","sourceType":"image","sourceRef":"3b9a1846","targetType":"image","targetRef":"a6982eb7","bendX":391.73333333333346,"bendY":1392.8000000000006,"lineColor":"#E24B4A","lineThickness":6},{"id":"03e652bc","sourceType":"note","sourceRef":"Editing-Notes.md","targetType":"image","targetRef":"a6982eb7","bendX":-714,"bendY":-172,"lineColor":"#89B4FA","lineThickness":3},{"id":"0b7c1a13","sourceType":"note","sourceRef":"Wiki-links.md","targetType":"image","targetRef":"a6982eb7","bendX":463.00000000000045,"bendY":-440,"lineColor":"#89B4FA","lineThickness":2.5},{"id":"273ef9ee","sourceType":"note","sourceRef":"Markdown Toolbar.md","targetType":"image","targetRef":"a6982eb7","bendX":850,"bendY":52,"lineColor":"#89B4FA","lineThickness":2.5}],"connections":[{"sourcePath":"Getting Started.md","targetPath":"Board View.md"},{"sourcePath":"Getting Started.md","targetPath":"Structure View.md"},{"sourcePath":"Board View.md","targetPath":"Creating Notes.md"},{"sourcePath":"Board View.md","targetPath":"Relations.md"},{"sourcePath":"Creating Notes.md","targetPath":"Templates.md"},{"sourcePath":"Creating Notes.md","targetPath":"Structure View.md"},{"sourcePath":"Editing-Notes.md","targetPath":"Wiki-links.md"},{"sourcePath":"Editing-Notes.md","targetPath":"Markdown Toolbar.md"},{"sourcePath":"Markdown Toolbar.md","targetPath":"Wiki-links.md"},{"sourcePath":"Wiki-links.md","targetPath":"Relations.md"},{"sourcePath":"Wiki-links.md","targetPath":"Board View.md"},{"sourcePath":"Relations.md","targetPath":"Wiki-links.md"},{"sourcePath":"Categories.md","targetPath":"Edit Category.md"},{"sourcePath":"Categories.md","targetPath":"Structure View.md"},{"sourcePath":"Edit Category.md","targetPath":"Categories.md"},{"sourcePath":"Templates.md","targetPath":"Edit Template.md"},{"sourcePath":"Templates.md","targetPath":"Creating Notes.md"},{"sourcePath":"Edit Template.md","targetPath":"Templates.md"},{"sourcePath":"Search.md","targetPath":"Board View.md"},{"sourcePath":"Search.md","targetPath":"Structure View.md"},{"sourcePath":"HTML Export.md","targetPath":"Board View.md"},{"sourcePath":"HTML Export.md","targetPath":"Wiki-links.md"},{"sourcePath":"Structure View.md","targetPath":"Board View.md"}]};
+
+// ── STATE ──────────────────────────────────────────────────────────────
+let panX=0, panY=0, zoom=1;
+let isPanning=false, panStartX=0, panStartY=0, panOriginX=0, panOriginY=0;
+const MIN_ZOOM=0.25, MAX_ZOOM=3;
+let connectionsVisible=false;
+let currentModalPath=null;
+
+const board       = document.getElementById('board');
+const boardWrap   = document.getElementById('board-wrap');
+const svgOverlay  = document.getElementById('svg-overlay');
+
+// ── HELPERS ───────────────────────────────────────────────────────────
+function catById(id){ return DATA.categories.find(c=>c.id===id)||null; }
+
+function hexToRgb(hex){
+  hex=hex.replace('#','');
+  if(hex.length===6){
+    const r=parseInt(hex.slice(0,2),16),g=parseInt(hex.slice(2,4),16),b=parseInt(hex.slice(4,6),16);
+    return {r,g,b};
+  }
+  return {r:69,g:71,b:90};
+}
+
+function cardDimensions(c){
+  if(c.customWidth && c.customHeight) return {w:c.customWidth, h:c.customHeight};
+  const size = c.cardSize||'minimum';
+  return {
+    w: size==='large'?880:size==='medium'?440:220,
+    h: size==='large'?320:size==='medium'?160:120
+  };
+}
+
+// ── RENDER CARDS ──────────────────────────────────────────────────────
+function buildBoard(){
+  // NoteCards
+  DATA.cards.forEach(c=>{
+    const cat=c.categoryId?catById(c.categoryId):null;
+    const stripColor=cat?cat.color:'#45475A';
+    const {w,h}=cardDimensions(c);
+
+    const el=document.createElement('div');
+    el.className='card';
+    el.dataset.path=c.relativePath;
+    el.style.cssText=`left:${c.boardX}px;top:${c.boardY}px;width:${w}px;height:${h}px`;
+
+    const strip=document.createElement('div');
+    strip.className='card-strip';
+    strip.style.background=stripColor;
+
+    const body=document.createElement('div');
+    body.className='card-body';
+
+    // title row
+    const titleRow=document.createElement('div');
+    titleRow.className='card-title-row';
+    const titleEl=document.createElement('div');
+    titleEl.className='card-title';
+    titleEl.textContent=pathToTitle(c.relativePath);
+    titleRow.appendChild(titleEl);
+    if(cat){
+      const badge=document.createElement('span');
+      badge.className='cat-badge';
+      badge.style.background=cat.color;
+      badge.textContent=cat.name;
+      titleRow.appendChild(badge);
+    }
+
+    // folder label
+    const folder=pathFolder(c.relativePath);
+    if(folder){
+      const fl=document.createElement('div');
+      fl.className='card-folder';
+      fl.textContent=folder+'/';
+      body.appendChild(titleRow);
+      body.appendChild(fl);
+    } else {
+      body.appendChild(titleRow);
+    }
+
+    // preview — rendered HTML proportional to card size
+const previewContent = c.previewHtml || c.preview || '';
+if(previewContent){
+  const prev=document.createElement('div');
+  prev.className='card-preview';
+  if(c.previewHtml){
+    prev.innerHTML=c.previewHtml;
+    // Wiki-linki w preview → klikalne
+    prev.querySelectorAll('p,li').forEach(node=>{
+      node.innerHTML=node.innerHTML.replace(/\[\[([^\]]+)\]\]/g,(m,name)=>{
+        return `<a style="color:var(--blue)" href="#" onclick="event.stopPropagation();
+                const t=DATA.cards.find(c=>pathToTitle(c.relativePath)==='${name}');
+                if(t)openModal(t);return false;">${name}</a>`;
+      });
+    });
+  } else {
+    prev.textContent=c.preview;
+  }
+  body.appendChild(prev);
+}
+
+    // date
+    if(c.modifiedDate){
+      const d=document.createElement('div');
+      d.className='card-date';
+      d.textContent=c.modifiedDate;
+      body.appendChild(d);
+    }
+
+    el.appendChild(strip);
+    el.appendChild(body);
+    el.addEventListener('click',()=>openModal(c));
+    board.appendChild(el);
+  });
+
+  // TitleCards
+  DATA.titleCards.forEach(t=>{
+    const w=t.customWidth||300, h=t.customHeight||80;
+    const el=document.createElement('div');
+    el.className='title-card';
+    el.style.cssText=`left:${t.boardX}px;top:${t.boardY}px;width:${w}px;height:${h}px;background:${t.backgroundColor};color:${t.fontColor};font-family:${t.fontFamily},sans-serif;font-size:${Math.min(t.fontSize,64)}px;font-weight:${t.bold?700:400};font-style:${t.italic?'italic':'normal'}`;
+    el.textContent=t.text;
+    board.appendChild(el);
+  });
+
+  // ImageCards
+  DATA.imageCards.forEach(ic=>{
+    const w=ic.customWidth||300, h=ic.customHeight||200;
+    const el=document.createElement('div');
+    el.className='img-card';
+    el.style.cssText=`left:${ic.boardX}px;top:${ic.boardY}px;width:${w}px;height:${h}px`;
+    const img=document.createElement('img');
+    img.src=ic.imgSrc;
+    img.alt='';
+    img.style.cssText='max-width:100%;max-height:100%;object-fit:contain';
+    el.appendChild(img);
+    el.addEventListener('click',()=>openImgModal(ic.imgSrc));
+    board.appendChild(el);
+  });
+
+  renderRelations();
+}
+
+function pathToTitle(p){ return p.split('/').pop().replace(/\.md$/i,''); }
+function pathFolder(p){
+  const parts=p.replace(/\.md$/i,'').split('/');
+  return parts.length>1?parts.slice(0,-1).join('/'):null;
+}
+
+function copyModalMd(){
+  if(!currentModalPath) return;
+  const card=DATA.cards.find(c=>c.relativePath===currentModalPath);
+  if(!card||!card.markdownRaw) return;
+
+  navigator.clipboard.writeText(card.markdownRaw).then(()=>{
+    const btn=document.getElementById('modal-copy');
+    btn.textContent='Copied!';
+    btn.classList.add('copied');
+    setTimeout(()=>{
+      btn.textContent='Copy MD';
+      btn.classList.remove('copied');
+    },2000);
+  }).catch(()=>{
+    // fallback dla starszych przeglądarek
+    const ta=document.createElement('textarea');
+    ta.value=card.markdownRaw;
+    ta.style.position='fixed';
+    ta.style.opacity='0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    const btn=document.getElementById('modal-copy');
+    btn.textContent='Copied!';
+    btn.classList.add('copied');
+    setTimeout(()=>{ btn.textContent='Copy MD'; btn.classList.remove('copied'); },2000);
+  });
+}
+
+
+
+// ── RELATIONS SVG ─────────────────────────────────────────────────────
+function cardCenter(type,ref){
+  let el=null;
+  if(type==='note'){
+    el=board.querySelector(`.card[data-path="${CSS.escape(ref)}"]`);
+  } else if(type==='title'){
+    el=board.querySelectorAll('.title-card')[DATA.titleCards.findIndex(t=>t.id===ref)];
+  } else if(type==='image'){
+    el=board.querySelectorAll('.img-card')[DATA.imageCards.findIndex(i=>i.id===ref)];
+  }
+  if(!el) return null;
+  const x=parseFloat(el.style.left||0);
+  const y=parseFloat(el.style.top||0);
+  const w=parseFloat(el.style.width||220);
+  const h=parseFloat(el.style.height||120);
+  return {x:x+w/2, y:y+h/2};
+}
+
+function makeArrowHead(svg, x1,y1,x2,y2, color, thickness){
+  const angle=Math.atan2(y2-y1,x2-x1);
+  const scale=Math.max(0.7,Math.min(3,thickness/1.5));
+  const aLen=11*scale, aW=5*scale;
+  const ax=x2-aLen*Math.cos(angle), ay=y2-aLen*Math.sin(angle);
+  const p=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+  const pts=[
+    `${x2},${y2}`,
+    `${ax-aW*Math.sin(angle)},${ay+aW*Math.cos(angle)}`,
+    `${ax+aW*Math.sin(angle)},${ay-aW*Math.cos(angle)}`
+  ];
+  p.setAttribute('points',pts.join(' '));
+  const rgb=hexToRgb(color);
+  p.setAttribute('fill',`rgba(${rgb.r},${rgb.g},${rgb.b},0.8)`);
+  svg.appendChild(p);
+}
+
+function renderRelations(){
+  svgOverlay.querySelectorAll('.rel,.conn').forEach(e=>e.remove());
+
+  DATA.relations.forEach(r=>{
+    const src=cardCenter(r.sourceType,r.sourceRef);
+    const tgt=cardCenter(r.targetType,r.targetRef);
+    if(!src||!tgt) return;
+
+    const midX=(src.x+tgt.x)/2+r.bendX;
+    const midY=(src.y+tgt.y)/2+r.bendY;
+    const color=r.lineColor||'#CBA6F7';
+    const thick=r.lineThickness||1.5;
+    const rgb=hexToRgb(color);
+
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d',`M${src.x},${src.y} Q${midX},${midY} ${tgt.x},${tgt.y}`);
+    path.setAttribute('fill','none');
+    path.setAttribute('stroke',`rgba(${rgb.r},${rgb.g},${rgb.b},0.65)`);
+    path.setAttribute('stroke-width',thick);
+    path.classList.add('rel');
+    svgOverlay.appendChild(path);
+
+    // Grot na środku krzywej Beziera (t=0.5)
+    // Punkt na krzywej przy t=0.5: B(0.5) = 0.25*src + 0.5*mid + 0.25*tgt
+    const bx = 0.25*src.x + 0.5*midX + 0.25*tgt.x;
+    const by = 0.25*src.y + 0.5*midY + 0.25*tgt.y;
+    // Kierunek stycznej przy t=0.5: B'(0.5) = (mid-src) + (tgt-mid) = tgt-src (przeskalowane)
+    // Dokładnie: B'(t) = 2*(1-t)*(mid-src) + 2*t*(tgt-mid)
+    // Przy t=0.5: B'(0.5) = (mid-src) + (tgt-mid) = tgt - src
+    const dx = tgt.x - src.x;
+    const dy = tgt.y - src.y;
+    const angle = Math.atan2(dy, dx);
+
+    const scale=Math.max(0.7,Math.min(3,thick/1.5));
+    const aLen=12*scale, aW=6*scale;
+    const ax=bx-aLen*Math.cos(angle), ay=by-aLen*Math.sin(angle);
+
+    const arrow=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    arrow.setAttribute('points',[
+      `${bx},${by}`,
+      `${ax-aW*Math.sin(angle)},${ay+aW*Math.cos(angle)}`,
+      `${ax+aW*Math.sin(angle)},${ay-aW*Math.cos(angle)}`
+    ].join(' '));
+    arrow.setAttribute('fill',`rgba(${rgb.r},${rgb.g},${rgb.b},0.9)`);
+    arrow.classList.add('rel');
+    svgOverlay.appendChild(arrow);
+  });
+
+  if(connectionsVisible){
+    DATA.connections.forEach(cn=>{
+      const src=cardCenter('note',cn.sourcePath);
+      const tgt=cardCenter('note',cn.targetPath);
+      if(!src||!tgt) return;
+
+      const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1',src.x); line.setAttribute('y1',src.y);
+      line.setAttribute('x2',tgt.x); line.setAttribute('y2',tgt.y);
+      line.setAttribute('stroke','rgba(137,180,250,0.45)');
+      line.setAttribute('stroke-width','1.5');
+      line.classList.add('conn');
+      svgOverlay.appendChild(line);
+
+      // Grot na środku prostej linii
+      const mx=(src.x+tgt.x)/2, my=(src.y+tgt.y)/2;
+      const angle=Math.atan2(tgt.y-src.y, tgt.x-src.x);
+      const ax=mx-10*Math.cos(angle), ay=my-10*Math.sin(angle);
+      const arr=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+      arr.setAttribute('points',[
+        `${mx},${my}`,
+        `${ax-5*Math.sin(angle)},${ay+5*Math.cos(angle)}`,
+        `${ax+5*Math.sin(angle)},${ay-5*Math.cos(angle)}`
+      ].join(' '));
+      arr.setAttribute('fill','rgba(137,180,250,0.7)');
+      arr.classList.add('conn');
+      svgOverlay.appendChild(arr);
+    });
+  }
+}
+
+// ── PAN ───────────────────────────────────────────────────────────────
+boardWrap.addEventListener('mousedown',e=>{
+  if(e.button!==0 && e.button!==1) return;
+  // Don't pan when clicking a card
+  if(e.target.closest('.card,.title-card,.img-card')) return;
+  isPanning=true;
+  boardWrap.classList.add('panning');
+  panStartX=e.clientX; panStartY=e.clientY;
+  panOriginX=panX; panOriginY=panY;
+  e.preventDefault();
+});
+window.addEventListener('mousemove',e=>{
+  if(!isPanning) return;
+  panX=panOriginX+(e.clientX-panStartX);
+  panY=panOriginY+(e.clientY-panStartY);
+  applyTransform();
+});
+window.addEventListener('mouseup',()=>{ isPanning=false; boardWrap.classList.remove('panning'); });
+
+// ── ZOOM ──────────────────────────────────────────────────────────────
+boardWrap.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const delta=e.deltaY>0?-0.08:0.08;
+  const newZoom=Math.max(MIN_ZOOM,Math.min(MAX_ZOOM,zoom+delta));
+  if(Math.abs(newZoom-zoom)<0.001) return;
+
+  const rect=boardWrap.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  const canvasX=(mx-panX)/zoom, canvasY=(my-panY)/zoom;
+  zoom=newZoom;
+  panX=mx-canvasX*zoom; panY=my-canvasY*zoom;
+  applyTransform();
+},{passive:false});
+
+function applyTransform(){
+  board.style.transform=`translate(${panX}px,${panY}px) scale(${zoom})`;
+  board.style.transformOrigin='0 0';
+}
+
+// ── FIT ALL ───────────────────────────────────────────────────────────
+function fitAll(){
+  const vpw=boardWrap.clientWidth, vph=boardWrap.clientHeight;
+  if(!DATA.cards.length && !DATA.imageCards.length && !DATA.titleCards.length) return;
+
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  function expand(x,y,w,h){ minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x+w);maxY=Math.max(maxY,y+h); }
+
+  DATA.cards.forEach(c=>{ const {w,h}=cardDimensions(c); expand(c.boardX,c.boardY,w,h); });
+  DATA.imageCards.forEach(i=>expand(i.boardX,i.boardY,i.customWidth||300,i.customHeight||200));
+  DATA.titleCards.forEach(t=>expand(t.boardX,t.boardY,t.customWidth||300,t.customHeight||80));
+
+  const bw=maxX-minX, bh=maxY-minY;
+  const z=Math.min(Math.max(MIN_ZOOM,(vpw-80)/bw),Math.max(MIN_ZOOM,(vph-80)/bh),MAX_ZOOM);
+  zoom=z;
+  panX=(vpw-bw*z)/2-minX*z;
+  panY=(vph-bh*z)/2-minY*z;
+  applyTransform();
+}
+
+// ── CONNECTIONS TOGGLE ────────────────────────────────────────────────
+function toggleConnections(){
+  connectionsVisible=!connectionsVisible;
+  document.getElementById('btn-conn').classList.toggle('active',connectionsVisible);
+  renderRelations();
+}
+
+// ── NOTE MODAL ────────────────────────────────────────────────────────
+function openModal(card){
+  currentModalPath=card.relativePath;
+  const cat=card.categoryId?catById(card.categoryId):null;
+
+  document.getElementById('modal-title').textContent=pathToTitle(card.relativePath);
+
+  const catEl=document.getElementById('modal-cat');
+  if(cat){ catEl.style.display='inline-block'; catEl.style.background=cat.color; catEl.textContent=cat.name; }
+  else catEl.style.display='none';
+
+  const body=document.getElementById('modal-body');
+  body.innerHTML=card.htmlContent||'';
+
+  // Make [[links]] clickable in modal
+  body.querySelectorAll('a').forEach(a=>{
+    const href=a.getAttribute('href')||'';
+    if(href.startsWith('#') || href===''){ // potential wiki-link placeholder
+      a.addEventListener('click',ev=>{
+        ev.preventDefault();
+        const text=a.textContent;
+        const target=DATA.cards.find(c=>pathToTitle(c.relativePath)===text);
+        if(target) openModal(target);
+      });
+    } else {
+      a.setAttribute('target','_blank');
+      a.setAttribute('rel','noopener');
+    }
+  });
+
+  // Handle [[link]] patterns that Markdig turns into plain text
+  // Markdig renders [[X]] as-is in paragraphs — we post-process
+  body.querySelectorAll('p,li').forEach(node=>{
+    node.innerHTML=node.innerHTML.replace(/\[\[([^\]]+)\]\]/g,(m,name)=>{
+      return `<a class="wiki-link" data-target="${name}" style="color:#89B4FA;cursor:pointer" href="#">${name}</a>`;
+    });
+  });
+  body.querySelectorAll('.wiki-link').forEach(a=>{
+    a.addEventListener('click',ev=>{
+      ev.preventDefault();
+      const name=a.dataset.target;
+      const target=DATA.cards.find(c=>pathToTitle(c.relativePath)===name);
+      if(target) openModal(target);
+    });
+  });
+
+  document.getElementById('modal-backdrop').classList.add('open');
+}
+
+function closeModal(e){
+  if(e && e.target!==document.getElementById('modal-backdrop')) return;
+  document.getElementById('modal-backdrop').classList.remove('open');
+  currentModalPath=null;
+}
+
+// ── IMAGE MODAL ───────────────────────────────────────────────────────
+function openImgModal(src){
+  document.getElementById('imgmodal-img').src=src;
+  document.getElementById('imgmodal-backdrop').classList.add('open');
+}
+function closeImgModal(){ document.getElementById('imgmodal-backdrop').classList.remove('open'); }
+
+// ── KEYBOARD ──────────────────────────────────────────────────────────
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    closeModal({target:document.getElementById('modal-backdrop')});
+    closeImgModal();
+  }
+});
+
+// ── INIT ──────────────────────────────────────────────────────────────
+buildBoard();
+requestAnimationFrame(fitAll);
+</script>
+</body>
+</html>
