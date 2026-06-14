@@ -111,21 +111,59 @@ namespace Apex.Views
             // Populate category dropdown
             _templateBarChanging = true;
             TemplateCategory.Items.Clear();
-            TemplateCategory.Items.Add(new ComboBoxItem
+
+
+            var itemStyle = new Style(typeof(ComboBoxItem));
+            itemStyle.Setters.Add(new Setter(ComboBoxItem.BackgroundProperty,
+                new SolidColorBrush(Color.FromRgb(49, 50, 68))));
+            itemStyle.Setters.Add(new Setter(ComboBoxItem.ForegroundProperty,
+                new SolidColorBrush(Color.FromRgb(205, 214, 244))));
+            itemStyle.Setters.Add(new Setter(ComboBoxItem.PaddingProperty,
+                new Thickness(8, 4, 8, 4)));
+
+            var hoverTrigger = new Trigger
+            { Property = ComboBoxItem.IsMouseOverProperty, Value = true };
+            hoverTrigger.Setters.Add(new Setter(ComboBoxItem.BackgroundProperty,
+                new SolidColorBrush(Color.FromRgb(69, 71, 90))));
+            itemStyle.Triggers.Add(hoverTrigger);
+
+            var selectedTrigger = new Trigger
+            { Property = ComboBoxItem.IsSelectedProperty, Value = true };
+            selectedTrigger.Setters.Add(new Setter(ComboBoxItem.BackgroundProperty,
+                new SolidColorBrush(Color.FromRgb(88, 91, 112))));
+            itemStyle.Triggers.Add(selectedTrigger);
+
+            var noneItem = new ComboBoxItem
             {
                 Content = "(None)",
-                Tag = (string?)null
-            });
+                Tag = (string?)null,
+                Style = itemStyle
+            };
+            TemplateCategory.Items.Add(noneItem);
+
             foreach (var cat in _project.Categories)
             {
                 TemplateCategory.Items.Add(new ComboBoxItem
                 {
                     Content = cat.Name,
                     Tag = cat.Id,
-                    Foreground = new SolidColorBrush(
-                        ParseHexColor(cat.Color))
+                    Foreground = new SolidColorBrush(ParseHexColor(cat.Color)),
+                    Style = itemStyle
                 });
             }
+
+            TemplateCategory.Background =
+                new SolidColorBrush(Color.FromRgb(49, 50, 68));
+            TemplateCategory.Foreground =
+                new SolidColorBrush(Color.FromRgb(205, 214, 244));
+            TemplateCategory.Resources.Add(SystemColors.WindowBrushKey,
+                new SolidColorBrush(Color.FromRgb(49, 50, 68)));
+            TemplateCategory.Resources.Add(SystemColors.WindowTextBrushKey,
+                new SolidColorBrush(Color.FromRgb(205, 214, 244)));
+            TemplateCategory.Resources.Add(SystemColors.HighlightBrushKey,
+                new SolidColorBrush(Color.FromRgb(88, 91, 112)));
+            TemplateCategory.Resources.Add(SystemColors.HighlightTextBrushKey,
+                new SolidColorBrush(Color.FromRgb(205, 214, 244)));
 
             // Select current
             var selected = TemplateCategory.Items.OfType<ComboBoxItem>()
