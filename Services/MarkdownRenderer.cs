@@ -1,10 +1,13 @@
-﻿using System.Text.RegularExpressions;
+﻿using ICSharpCode.AvalonEdit.Highlighting;
+using ICSharpCode.AvalonEdit.Highlighting.Xshd;
+using Markdig;
+using System.IO;
+using System.Text.RegularExpressions;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
-using Markdig;
-using System.IO;
 
 namespace Apex.Services;
 
@@ -230,6 +233,10 @@ public static class MarkdownRenderer
 
     private static Paragraph RenderCodeBlock(Markdig.Syntax.FencedCodeBlock code)
     {
+        var lines = code.Lines.Lines.Select(l => l.ToString()).Where(l => l != null).ToList();
+        string codeText = string.Join("\n", lines).TrimEnd('\n');
+        string language = code.Info?.Trim().ToLowerInvariant() ?? "";
+
         var paragraph = new Paragraph
         {
             Margin = new Thickness(0, 0, 0, 12),
@@ -237,25 +244,40 @@ public static class MarkdownRenderer
             Background = new SolidColorBrush(Color.FromRgb(24, 24, 37)),
             FontFamily = new FontFamily("Consolas"),
             FontSize = 12,
-            Foreground = new SolidColorBrush(Color.FromRgb(186, 194, 222)),
             BorderBrush = new SolidColorBrush(Color.FromRgb(49, 50, 68)),
             BorderThickness = new Thickness(1),
         };
-        foreach (var slice in code.Lines.Lines)
+
+        // Label języka w prawym górnym rogu — przez InlineUIContainer
+        if (!string.IsNullOrEmpty(language))
         {
-            string text = slice.ToString();
-            if (text == null) continue;
-            paragraph.Inlines.Add(new Run(text)
+            var langLabel = new TextBlock
             {
-                Foreground = new SolidColorBrush(Color.FromRgb(186, 194, 222))
-            });
+                Text = language,
+                FontSize = 10,
+                FontFamily = new FontFamily("Segoe UI"),
+                Foreground = new SolidColorBrush(Color.FromRgb(108, 112, 134)),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+            var labelContainer = new InlineUIContainer(langLabel);
+            paragraph.Inlines.Add(labelContainer);
             paragraph.Inlines.Add(new LineBreak());
         }
+
+        // Syntax highlighting
+        var highlightedRuns = GetHighlightedRuns(codeText, language);
+        foreach (var inline in highlightedRuns)
+            paragraph.Inlines.Add(inline);
+
         return paragraph;
     }
 
     private static Paragraph RenderIndentedCodeBlock(Markdig.Syntax.CodeBlock code)
     {
+        var lines = code.Lines.Lines.Select(l => l.ToString()).Where(l => l != null).ToList();
+        string codeText = string.Join("\n", lines).TrimEnd('\n');
+
         var paragraph = new Paragraph
         {
             Margin = new Thickness(0, 0, 0, 12),
@@ -263,19 +285,129 @@ public static class MarkdownRenderer
             Background = new SolidColorBrush(Color.FromRgb(24, 24, 37)),
             FontFamily = new FontFamily("Consolas"),
             FontSize = 12,
-            Foreground = new SolidColorBrush(Color.FromRgb(186, 194, 222)),
             BorderBrush = new SolidColorBrush(Color.FromRgb(49, 50, 68)),
             BorderThickness = new Thickness(1),
         };
-        foreach (var slice in code.Lines.Lines)
-        {
-            string text = slice.ToString();
-            if (text == null) continue;
-            paragraph.Inlines.Add(new Run(text));
-            paragraph.Inlines.Add(new LineBreak());
-        }
+
+        foreach (var inline in GetHighlightedRuns(codeText, ""))
+            paragraph.Inlines.Add(inline);
+
         return paragraph;
     }
+
+    private static List<Inline> GetHighlightedRuns(string code, string language)
+    {
+        var result = new List<Inline>();
+
+        // Spróbuj znaleźć definicję highlighting dla danego języka
+        IHighlightingDefinition? highlighting = null;
+        if (!string.IsNullOrEmpty(language))
+        {
+            // AvalonEdit mapuje nazwy — próbuj kilka wariantów
+            highlighting = language switch
+            {
+                "c#" or "csharp" or "cs" => HighlightingManager.Instance.GetDefinition("C#"),
+                "c++" or "cpp" => HighlightingManager.Instance.GetDefinition("C++"),
+                "c" => HighlightingManager.Instance.GetDefinition("C++"), // fallback
+                "java" => HighlightingManager.Instance.GetDefinition("Java"),
+                "js" or "javascript" => HighlightingManager.Instance.GetDefinition("JavaScript"),
+                "ts" or "typescript" => HighlightingManager.Instance.GetDefinition("JavaScript"),
+                "python" or "py" => HighlightingManager.Instance.GetDefinition("Python"),
+                "xml" or "xaml" or "html" => HighlightingManager.Instance.GetDefinition("XML"),
+                "css" => HighlightingManager.Instance.GetDefinition("CSS"),
+                "sql" => HighlightingManager.Instance.GetDefinition("SQL"),
+                "php" => HighlightingManager.Instance.GetDefinition("PHP"),
+                "powershell" or "ps1" => HighlightingManager.Instance.GetDefinition("PowerShell"),
+                "bash" or "sh" or "shell" => HighlightingManager.Instance.GetDefinition("BAT"),
+                "json" => HighlightingManager.Instance.GetDefinition("Json"),
+                "markdown" or "md" => null,
+                _ => HighlightingManager.Instance.GetDefinitionByExtension("." + language)
+            };
+        }
+
+        if (highlighting == null)
+        {
+            // Brak highlighting — zwróć plain text z podziałem na linie
+            bool first = true;
+            foreach (string line in code.Split('\n'))
+            {
+                if (!first) result.Add(new LineBreak());
+                first = false;
+                result.Add(new Run(line) { Foreground = new SolidColorBrush(Color.FromRgb(186, 194, 222)) });
+            }
+            return result;
+        }
+
+        // Użyj AvalonEdit DocumentHighlighter do podkolorowania
+        try
+        {
+            var document = new ICSharpCode.AvalonEdit.Document.TextDocument(code);
+            var highlighter = new ICSharpCode.AvalonEdit.Highlighting.DocumentHighlighter(document, highlighting);
+
+            int lineCount = document.LineCount;
+            for (int lineNum = 1; lineNum <= lineCount; lineNum++)
+            {
+                if (lineNum > 1) result.Add(new LineBreak());
+
+                var docLine = document.GetLineByNumber(lineNum);
+                var highlightedLine = highlighter.HighlightLine(lineNum);
+                string lineText = document.GetText(docLine.Offset, docLine.Length);
+
+                if (highlightedLine.Sections.Count == 0)
+                {
+                    result.Add(new Run(lineText) { Foreground = new SolidColorBrush(Color.FromRgb(186, 194, 222)) });
+                    continue;
+                }
+
+                int pos = 0;
+                foreach (var section in highlightedLine.Sections)
+                {
+                    // Tekst przed sekcją (bez formatowania)
+                    if (section.Offset > pos)
+                    {
+                        string plain = lineText[pos..section.Offset];
+                        result.Add(new Run(plain) { Foreground = new SolidColorBrush(Color.FromRgb(186, 194, 222)) });
+                    }
+
+                    // Tekst sekcji z kolorem
+                    int end = Math.Min(section.Offset + section.Length, lineText.Length);
+                    if (section.Offset < end)
+                    {
+                        string sectionText = lineText[section.Offset..end];
+                        var run = new Run(sectionText);
+                        run.Foreground = ConvertAvalonColor(section.Color);
+                        if (section.Color.FontWeight.HasValue)
+                            run.FontWeight = section.Color.FontWeight.Value == FontWeights.Bold ? FontWeights.Bold : FontWeights.Normal;
+                        if (section.Color.FontStyle.HasValue)
+                            run.FontStyle = section.Color.FontStyle.Value == FontStyles.Italic ? FontStyles.Italic : FontStyles.Normal;
+                        result.Add(run);
+                    }
+
+                    pos = section.Offset + section.Length;
+                }
+
+                // Tekst po ostatniej sekcji
+                if (pos < lineText.Length)
+                    result.Add(new Run(lineText[pos..]) { Foreground = new SolidColorBrush(Color.FromRgb(186, 194, 222)) });
+            }
+        }
+        catch
+        {
+            // Fallback jeśli highlighting się wysypie
+            result.Clear();
+            bool first = true;
+            foreach (string line in code.Split('\n'))
+            {
+                if (!first) result.Add(new LineBreak());
+                first = false;
+                result.Add(new Run(line) { Foreground = new SolidColorBrush(Color.FromRgb(186, 194, 222)) });
+            }
+        }
+
+        return result;
+    }
+
+
 
     private static Section RenderListBlock(
     Markdig.Syntax.ListBlock list,
@@ -364,6 +496,48 @@ public static class MarkdownRenderer
                     break;
             }
         }
+    }
+
+    private static Brush ConvertAvalonColor(HighlightingColor color)
+    {
+        if (color.Foreground == null)
+            return new SolidColorBrush(Color.FromRgb(205, 214, 244));
+
+        var brush = color.Foreground.GetBrush(null);
+        if (brush is not SolidColorBrush scb)
+            return new SolidColorBrush(Color.FromRgb(205, 214, 244));
+
+        var c = scb.Color;
+
+        // AvalonEdit domyślne kolory są na jasne tło — remapuj na Catppuccin Mocha
+        // Sprawdzamy przybliżone kolory bo AvalonEdit nie daje nazw tokenów
+
+        // Ciemny niebieski → słowa kluczowe — mapuj na jasny niebieski/lawendowy
+        if (c.R < 80 && c.G < 80 && c.B > 100)
+            return new SolidColorBrush(Color.FromRgb(203, 166, 247)); // purple — keywords
+
+        // Ciemna zieleń → komentarze — mapuj na szary-zielony
+        if (c.R < 80 && c.G > 80 && c.B < 80)
+            return new SolidColorBrush(Color.FromRgb(108, 112, 134)); // gray — comments
+
+        // Ciemna czerwień/brąz → stringi — mapuj na zielony
+        if (c.R > 100 && c.G < 60 && c.B < 60)
+            return new SolidColorBrush(Color.FromRgb(166, 227, 161)); // green — strings
+
+        // Ciemny teal/morski → typy — mapuj na niebieski
+        if (c.R < 80 && c.G > 80 && c.B > 80)
+            return new SolidColorBrush(Color.FromRgb(137, 180, 250)); // blue — types
+
+        // Ciemny fiolet → mapuj na różowy
+        if (c.R > 80 && c.G < 60 && c.B > 80)
+            return new SolidColorBrush(Color.FromRgb(243, 139, 168)); // pink — special
+
+        // Kolor który jest jasny (>180 każdy kanał) — zostaw prawie bez zmian, tylko rozjaśnij lekko
+        if (c.R > 180 && c.G > 180 && c.B > 180)
+            return new SolidColorBrush(Color.FromRgb(205, 214, 244)); // default text
+
+        // Wszystko inne — zwróć domyślny kolor tekstu
+        return new SolidColorBrush(Color.FromRgb(205, 214, 244));
     }
 
     private static void RenderLiteralWithMarkers(

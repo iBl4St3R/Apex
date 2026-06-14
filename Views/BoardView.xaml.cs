@@ -784,7 +784,9 @@ namespace Apex.Views
                             BorderThickness = new Thickness(1),
                             CornerRadius = new CornerRadius(4),
                             Padding = new Thickness(8, 6, 8, 6),
-                            Margin = new Thickness(0, 2, 0, 2)
+                            Margin = new Thickness(0, 2, 0, 2),
+                            HorizontalAlignment = HorizontalAlignment.Stretch,  // ← dodaj
+                            MaxWidth = cardWidth - 20                           // ← dodaj
                         };
                         var codeText = new TextBlock
                         {
@@ -792,7 +794,8 @@ namespace Apex.Views
                             FontFamily = new FontFamily("Consolas"),
                             FontSize = 10,
                             Foreground = new SolidColorBrush(Color.FromRgb(186, 194, 222)),
-                            TextWrapping = TextWrapping.Wrap
+                            TextWrapping = TextWrapping.NoWrap,   // ← NoWrap żeby kod się nie łamał
+                            MaxWidth = cardWidth - 36             // ← dodaj (cardWidth minus padding border + stackpanel)
                         };
                         codeBorder.Child = codeText;
                         stack.Children.Add(codeBorder);
