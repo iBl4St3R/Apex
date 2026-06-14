@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text.Json;
 using Apex.Models;
 
@@ -162,7 +162,7 @@ public static class TemplateService
     //  Helper
     // ──────────────────────────────────────────────
 
-    private static void EnsureFolder(string rootFolder)
+    public static void EnsureFolder(string rootFolder)
     {
         string folder = GetTemplatesFolder(rootFolder);
         if (!Directory.Exists(folder))

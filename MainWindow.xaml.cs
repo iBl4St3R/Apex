@@ -423,6 +423,27 @@ namespace Apex
             SearchPopup.IsOpen = true;
         }
 
+        private void TemplatesButton_Click(object sender, RoutedEventArgs e)
+        {
+            var window = new TemplateManagerWindow(Project);
+            window.Owner = this;
+            window.OpenTemplateRequested += OnOpenTemplateRequested;
+            window.ShowDialog();
+        }
+
+        private void OnOpenTemplateRequested(string fullPath)
+        {
+            // Switch to Structure view and open the template file in NoteViewer
+            SetViewMode(ViewMode.Structure);
+            _structureView.SelectFile(
+                FileService.GetRelativePath(Project.RootFolder, fullPath));
+
+            // The file is in .templates/ so not in the tree — open directly in NoteViewer
+            ShowRightPanelContent(_noteViewer);
+            _noteViewer.LoadNote(fullPath, Project);
+            _noteViewer.EnterEditMode();
+        }
+
         private void SearchBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
             if (e.Key == System.Windows.Input.Key.Escape)

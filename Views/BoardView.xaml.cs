@@ -1985,7 +1985,6 @@ namespace Apex.Views
 
             string title = dialog.NoteTitle;
 
-            // Sanitize
             foreach (char c in Path.GetInvalidFileNameChars())
                 title = title.Replace(c.ToString(), "");
 
@@ -1997,14 +1996,22 @@ namespace Apex.Views
                 return;
             }
 
-            // Determine target folder from template (or root)
+            // Determine target folder — create it now if needed (only on actual note creation)
             string targetFolder = Project.RootFolder;
             string? autoCategory = null;
 
             if (dialog.SelectedTemplate != null)
             {
-                targetFolder = TemplateService.ResolveTargetFolder(
-                    Project.RootFolder, dialog.SelectedTemplate);
+                string desired = string.IsNullOrWhiteSpace(dialog.SelectedTemplate.DefaultFolder)
+                    ? Project.RootFolder
+                    : Path.GetFullPath(Path.Combine(
+                        Project.RootFolder,
+                        dialog.SelectedTemplate.DefaultFolder.Replace('/', Path.DirectorySeparatorChar)));
+
+                if (!Directory.Exists(desired))
+                    Directory.CreateDirectory(desired);
+
+                targetFolder = desired;
                 autoCategory = dialog.SelectedTemplate.DefaultCategoryId;
             }
 
@@ -2025,17 +2032,9 @@ namespace Apex.Views
 
             try
             {
-                // Ensure subfolder exists
-                string? dir = Path.GetDirectoryName(fullPath);
-                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                    Directory.CreateDirectory(dir);
-
-                // Write content — blank or from template
-                string content;
-                if (dialog.SelectedTemplate != null)
-                    content = TemplateService.ReadContent(Project.RootFolder, dialog.SelectedTemplate);
-                else
-                    content = $"# {title}\n\n";
+                string content = dialog.SelectedTemplate != null
+                    ? TemplateService.ReadContent(Project.RootFolder, dialog.SelectedTemplate)
+                    : $"# {title}\n\n";
 
                 File.WriteAllText(fullPath, content);
 
@@ -2052,9 +2051,8 @@ namespace Apex.Views
 
                 FileService.SaveProject(Project);
 
-                // Navigate straight to edit mode in Structure
+                // Navigate to edit mode in Structure
                 PreviewRequested?.Invoke(card);
-                // Small delay so the structure view has time to load
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
                     CardEditRequested?.Invoke(card);

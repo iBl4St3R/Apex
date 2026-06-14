@@ -442,6 +442,11 @@ namespace Apex.Views
                     }
                 }
 
+                // Create folder on first save if it doesn't exist yet
+                string? saveDir = Path.GetDirectoryName(_currentFilePath);
+                if (!string.IsNullOrEmpty(saveDir) && !Directory.Exists(saveDir))
+                    Directory.CreateDirectory(saveDir);
+
                 File.WriteAllText(_currentFilePath, newContent);
                 _savedContent = newContent;
                 UpdateToolbar();

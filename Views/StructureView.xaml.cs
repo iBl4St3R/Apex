@@ -85,12 +85,16 @@ namespace Apex.Views
             };
 
             foreach (var subDir in dir.EnumerateDirectories()
-                         .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase))
+             .Where(d => !string.Equals(d.Name, ".templates",
+                 StringComparison.OrdinalIgnoreCase))  // ← dodaj ten wiersz
+             .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase))
             {
                 var child = BuildFolderNode(subDir, depth + 1);
                 if (child != null)
                     folderNode.Children.Add(child);
             }
+
+
 
             foreach (var file in dir.EnumerateFiles("*.md")
                          .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
