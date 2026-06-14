@@ -76,6 +76,22 @@ namespace Apex.Views
         public static bool ScaleImageCardsDown = true;
         public static bool ScaleImageCardsUp = false;  // domyślnie nie rozciągamy w górę
 
+        // ── Relation drawing state ──
+        private bool _isDrawingRelation = false;
+        private string? _relationSourceType;
+        private string? _relationSourceRef;
+        private System.Windows.Shapes.Line? _relationDragLine;
+        private System.Windows.Shapes.Polygon? _relationDragArrow;
+
+        // ── Relation drag (bend handle) state ──
+        private bool _isDraggingBendHandle = false;
+        private Relation? _draggingRelation;
+        private Point _bendDragStartMouse;
+        private double _bendDragStartX, _bendDragStartY;
+
+        private readonly List<UIElement> _relationElements = new();
+
+
         public BoardView()
         {
             InitializeComponent();
@@ -273,9 +289,16 @@ namespace Apex.Views
                 Canvas.SetTop(element, titleCard.BoardY);
             }
 
-            // Linie rysuj po kartach żeby mieć ActualWidth (defer do layout pass)
-            Dispatcher.BeginInvoke(new Action(RenderConnections),
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                RenderConnections();
+                RenderRelations();
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
+
+            // Relations render after layout pass (need ActualWidth/Height of cards)
+            Dispatcher.BeginInvoke(new Action(RenderRelations),
                 System.Windows.Threading.DispatcherPriority.Loaded);
+
         }
 
         // ──────────────────────────────────────────────
@@ -540,6 +563,7 @@ namespace Apex.Views
 
 
 
+
         // ──────────────────────────────────────────────
         //  Card drag
         // ──────────────────────────────────────────────
@@ -685,6 +709,8 @@ namespace Apex.Views
                     }
 
                     if (Project != null) FileService.SaveProject(Project);
+
+                    RenderRelations();
                 }
                 else
                 {
@@ -865,6 +891,169 @@ namespace Apex.Views
             return stack;
         }
 
+        private static (string type, string refId)? GetElementTypeRef(Border b)
+        {
+            if (b.Tag is NoteCard nc) return ("note", nc.RelativePath);
+            if (b.Tag is TitleCard tc) return ("title", tc.Id);
+            if (b.Tag is ImageCard ic) return ("image", ic.Id);
+            return null;
+        }
+
+        private Point GetElementCenter(string type, string refId)
+        {
+            foreach (var child in BoardCanvas.Children.OfType<Border>())
+            {
+                bool match = type switch
+                {
+                    "note" => child.Tag is NoteCard nc && string.Equals(nc.RelativePath, refId, StringComparison.OrdinalIgnoreCase),
+                    "title" => child.Tag is TitleCard tc && string.Equals(tc.Id, refId, StringComparison.OrdinalIgnoreCase),
+                    "image" => child.Tag is ImageCard ic && string.Equals(ic.Id, refId, StringComparison.OrdinalIgnoreCase),
+                    _ => false
+                };
+                if (match)
+                {
+                    double l = Canvas.GetLeft(child);
+                    double t = Canvas.GetTop(child);
+                    double w = child.ActualWidth > 0 ? child.ActualWidth : 220;
+                    double h = child.ActualHeight > 0 ? child.ActualHeight : 80;
+                    return new Point(l + w / 2, t + h / 2);
+                }
+            }
+            return new Point(0, 0);
+        }
+
+
+        // ──────────────────────────────────────────────
+        //  Relation drawing
+        // ──────────────────────────────────────────────
+
+        private void BeginDrawRelation(string sourceType, string sourceRef)
+        {
+            _isDrawingRelation = true;
+            _relationSourceType = sourceType;
+            _relationSourceRef = sourceRef;
+
+            // Temporary drag line
+            _relationDragLine = new System.Windows.Shapes.Line
+            {
+                Stroke = new SolidColorBrush(Color.FromArgb(180, 203, 166, 247)),
+                StrokeThickness = 2,
+                StrokeDashArray = new DoubleCollection { 4, 3 },
+                IsHitTestVisible = false
+            };
+            _relationDragArrow = new System.Windows.Shapes.Polygon
+            {
+                Fill = new SolidColorBrush(Color.FromArgb(180, 203, 166, 247)),
+                IsHitTestVisible = false
+            };
+
+            BoardCanvas.Children.Add(_relationDragLine);
+            BoardCanvas.Children.Add(_relationDragArrow);
+
+            // Start coords = center of source element
+            Point src = GetElementCenter(sourceType, sourceRef);
+            _relationDragLine.X1 = src.X;
+            _relationDragLine.Y1 = src.Y;
+            _relationDragLine.X2 = src.X;
+            _relationDragLine.Y2 = src.Y;
+
+            // Capture all mouse moves at canvas level
+            CanvasTransformHost.MouseMove += DrawRelation_MouseMove;
+            CanvasTransformHost.PreviewMouseLeftButtonUp += DrawRelation_MouseUp;
+
+            // ESC cancels
+            KeyDown += DrawRelation_KeyDown;
+
+            Cursor = System.Windows.Input.Cursors.Cross;
+        }
+
+        private void DrawRelation_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (!_isDrawingRelation || _relationDragLine == null) return;
+
+            Point pos = e.GetPosition(BoardCanvas);
+            _relationDragLine.X2 = pos.X;
+            _relationDragLine.Y2 = pos.Y;
+
+            // Update temp arrowhead
+            if (_relationDragArrow != null)
+                UpdateArrowHead(_relationDragArrow,
+                    _relationDragLine.X1, _relationDragLine.Y1,
+                    pos.X, pos.Y);
+        }
+
+        private void DrawRelation_MouseUp(object sender, MouseButtonEventArgs e)
+        {
+            if (!_isDrawingRelation) return;
+
+            // Find which element was clicked
+            var hit = e.OriginalSource as DependencyObject;
+            var targetBorder = FindAncestor<Border>(hit,
+                b => b.Tag is NoteCard || b.Tag is TitleCard || b.Tag is ImageCard);
+
+            if (targetBorder != null)
+            {
+                var tr = GetElementTypeRef(targetBorder);
+                if (tr.HasValue)
+                {
+                    string tType = tr.Value.type;
+                    string tRef = tr.Value.refId;
+
+                    // No self-relations
+                    bool isSelf = string.Equals(tType, _relationSourceType,
+                                      StringComparison.OrdinalIgnoreCase) &&
+                                  string.Equals(tRef, _relationSourceRef,
+                                      StringComparison.OrdinalIgnoreCase);
+
+                    if (!isSelf && Project != null)
+                    {
+                        var candidate = new Relation(
+                            Guid.NewGuid().ToString("N")[..8],
+                            _relationSourceType!, _relationSourceRef!,
+                            tType, tRef);
+
+                        // No duplicate relations
+                        bool duplicate = Project.Relations.Any(r => r.IsSameAs(candidate));
+                        if (!duplicate)
+                        {
+                            Project.Relations.Add(candidate);
+                            FileService.SaveProject(Project);
+                            RenderRelations();
+                        }
+                    }
+                }
+            }
+
+            CancelDrawRelation();
+            e.Handled = true;
+        }
+
+        private void DrawRelation_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape)
+                CancelDrawRelation();
+        }
+
+        private void CancelDrawRelation()
+        {
+            _isDrawingRelation = false;
+            _relationSourceType = null;
+            _relationSourceRef = null;
+
+            if (_relationDragLine != null) { BoardCanvas.Children.Remove(_relationDragLine); _relationDragLine = null; }
+            if (_relationDragArrow != null) { BoardCanvas.Children.Remove(_relationDragArrow); _relationDragArrow = null; }
+
+            CanvasTransformHost.MouseMove -= DrawRelation_MouseMove;
+            CanvasTransformHost.PreviewMouseLeftButtonUp -= DrawRelation_MouseUp;
+
+            KeyDown -= DrawRelation_KeyDown;
+
+            Cursor = System.Windows.Input.Cursors.Arrow;
+        }
+
+
+
+
         private FrameworkElement? BuildCardImage(string src, string? noteFolder, double cardWidth)
         {
             try
@@ -910,6 +1099,272 @@ namespace Apex.Views
             }
             catch { return null; }
         }
+
+
+
+
+
+        // ──────────────────────────────────────────────
+        //  Relation rendering
+        // ──────────────────────────────────────────────
+
+        public void RenderRelations()
+        {
+            // Remove old relation elements
+            foreach (var el in _relationElements)
+                BoardCanvas.Children.Remove(el);
+            _relationElements.Clear();
+
+            if (Project == null) return;
+
+            // Znajdź indeks pierwszej karty (Border z Tag NoteCard/ImageCard/TitleCard)
+            // Linie wstawiamy PRZED kartami, handlery PO kartach
+            int firstCardIndex = 0;
+            for (int i = 0; i < BoardCanvas.Children.Count; i++)
+            {
+                if (BoardCanvas.Children[i] is Border b &&
+                    (b.Tag is NoteCard || b.Tag is ImageCard || b.Tag is TitleCard))
+                {
+                    firstCardIndex = i;
+                    break;
+                }
+            }
+
+            int lineInsertIndex = firstCardIndex; // linie i strzałki przed kartami
+            int handleInsertIndex = BoardCanvas.Children.Count; // handlery na samym wierzchu
+
+            foreach (var rel in Project.Relations)
+            {
+                Point src = GetElementCenter(rel.SourceType, rel.SourceRef);
+                Point tgt = GetElementCenter(rel.TargetType, rel.TargetRef);
+
+                // Pomiń relacje do elementów które nie istnieją
+                if (src == tgt && src == new Point(0, 0)) continue;
+
+                // Kontrolny punkt (bend)
+                double midX = (src.X + tgt.X) / 2 + rel.BendX;
+                double midY = (src.Y + tgt.Y) / 2 + rel.BendY;
+
+                // Bezier path — pod kartami
+                var path = BuildRelationPath(src, new Point(midX, midY), tgt);
+
+                // Arrowhead — pod kartami
+                var arrow = new System.Windows.Shapes.Polygon
+                {
+                    Fill = new SolidColorBrush(Color.FromArgb(200, 203, 166, 247)),
+                    IsHitTestVisible = false
+                };
+                UpdateArrowHead(arrow, midX, midY, tgt.X, tgt.Y);
+
+                // Wstaw linię i strzałkę PRZED kartami
+                BoardCanvas.Children.Insert(lineInsertIndex, path);
+                lineInsertIndex++;
+                BoardCanvas.Children.Insert(lineInsertIndex, arrow);
+                lineInsertIndex++;
+
+
+                // Zastąp:
+                // Punkt na krzywej Beziera przy t=0.5:
+                // B(0.5) = 0.25*src + 0.5*ctrl + 0.25*tgt
+                double handleX = 0.25 * src.X + 0.5 * midX + 0.25 * tgt.X;
+                double handleY = 0.25 * src.Y + 0.5 * midY + 0.25 * tgt.Y;
+                var handle = BuildBendHandle(rel, handleX, handleY);
+
+                BoardCanvas.Children.Add(handle);
+
+                _relationElements.Add(path);
+                _relationElements.Add(arrow);
+                _relationElements.Add(handle);
+            }
+        }
+
+        private System.Windows.Shapes.Path BuildRelationPath(Point src, Point ctrl, Point tgt)
+        {
+            var geo = new System.Windows.Media.PathGeometry();
+            var fig = new System.Windows.Media.PathFigure { StartPoint = src };
+            fig.Segments.Add(new System.Windows.Media.QuadraticBezierSegment(ctrl, tgt, true));
+            geo.Figures.Add(fig);
+
+            return new System.Windows.Shapes.Path
+            {
+                Data = geo,
+                Stroke = new SolidColorBrush(Color.FromArgb(160, 203, 166, 247)),
+                StrokeThickness = 1.5,
+                Fill = System.Windows.Media.Brushes.Transparent,
+                IsHitTestVisible = false
+            };
+        }
+
+        private System.Windows.Shapes.Ellipse BuildBendHandle(Relation rel, double cx, double cy)
+        {
+            const double R = 10; // większy — łatwiejszy do złapania
+            var handle = new System.Windows.Shapes.Ellipse
+            {
+                Width = R * 2,
+                Height = R * 2,
+                Fill = new SolidColorBrush(Color.FromRgb(203, 166, 247)),
+                Stroke = new SolidColorBrush(Color.FromRgb(30, 30, 46)),
+                StrokeThickness = 2,
+                Cursor = Cursors.SizeAll,
+                Tag = rel,
+                IsHitTestVisible = true
+            };
+            Canvas.SetLeft(handle, cx - R);
+            Canvas.SetTop(handle, cy - R);
+
+            handle.MouseLeftButtonDown += BendHandle_MouseDown;
+            handle.MouseMove += BendHandle_MouseMove;
+            handle.MouseLeftButtonUp += BendHandle_MouseUp;
+            handle.MouseRightButtonUp += BendHandle_MouseRightButtonUp;
+
+            return handle;
+        }
+
+        private void BendHandle_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not System.Windows.Shapes.Ellipse handle) return;
+            if (handle.Tag is not Relation rel) return;
+
+            var menu = new ContextMenu();
+            menu.PlacementTarget = handle;
+
+            var deleteItem = new MenuItem { Header = "Delete relation" };
+            deleteItem.Click += (_, _) =>
+            {
+                Project?.Relations.Remove(rel);
+                if (Project != null) FileService.SaveProject(Project);
+                RenderRelations();
+            };
+            menu.Items.Add(deleteItem);
+
+            var settingsItem = new MenuItem
+            {
+                Header = "Relation settings",
+                IsEnabled = false
+            };
+            menu.Items.Add(settingsItem);
+
+            menu.IsOpen = true;
+            e.Handled = true;
+        }
+
+        private static void UpdateArrowHead(System.Windows.Shapes.Polygon arrow,
+            double x1, double y1, double x2, double y2)
+        {
+            double angle = Math.Atan2(y2 - y1, x2 - x1);
+            double aLen = 11;
+            double aWidth = 5;
+
+            double ax = x2 - aLen * Math.Cos(angle);
+            double ay = y2 - aLen * Math.Sin(angle);
+
+            arrow.Points = new PointCollection
+    {
+        new Point(x2, y2),
+        new Point(ax - aWidth * Math.Sin(angle), ay + aWidth * Math.Cos(angle)),
+        new Point(ax + aWidth * Math.Sin(angle), ay - aWidth * Math.Cos(angle))
+    };
+        }
+
+
+        // ──────────────────────────────────────────────
+        //  Bend handle drag
+        // ──────────────────────────────────────────────
+
+        private void BendHandle_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not System.Windows.Shapes.Ellipse handle) return;
+            if (handle.Tag is not Relation rel) return;
+
+            _isDraggingBendHandle = true;
+            _draggingRelation = rel;
+            _bendDragStartMouse = e.GetPosition(BoardCanvas);
+            _bendDragStartX = rel.BendX;
+            _bendDragStartY = rel.BendY;
+
+            // Capture na poziomie canvas żeby nie tracić eventów
+            handle.CaptureMouse();
+
+            // MouseMove na canvas — nie traci się gdy kursor wychodzi poza handle
+            BoardCanvas.MouseMove += BendHandle_GlobalMouseMove;
+
+            e.Handled = true;
+        }
+
+        private void BendHandle_GlobalMouseMove(object sender, MouseEventArgs e)
+        {
+            if (!_isDraggingBendHandle || _draggingRelation == null) return;
+
+            Point cur = e.GetPosition(BoardCanvas);
+            double dx = cur.X - _bendDragStartMouse.X;
+            double dy = cur.Y - _bendDragStartMouse.Y;
+
+            _draggingRelation.BendX = _bendDragStartX + dx;
+            _draggingRelation.BendY = _bendDragStartY + dy;
+
+            RenderRelations();
+            e.Handled = true;
+        }
+
+
+
+        private void BendHandle_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (!_isDraggingBendHandle || _draggingRelation == null) return;
+
+            Point cur = e.GetPosition(BoardCanvas);
+            double dx = cur.X - _bendDragStartMouse.X;
+            double dy = cur.Y - _bendDragStartMouse.Y;
+
+            _draggingRelation.BendX = _bendDragStartX + dx;
+            _draggingRelation.BendY = _bendDragStartY + dy;
+
+            // Live re-render
+            RenderRelations();
+            e.Handled = true;
+        }
+
+        private void BendHandle_MouseUp(object sender, MouseButtonEventArgs e)
+        {
+            if (!_isDraggingBendHandle) return;
+
+            if (sender is System.Windows.Shapes.Ellipse handle)
+                handle.ReleaseMouseCapture();
+
+            BoardCanvas.MouseMove -= BendHandle_GlobalMouseMove;
+
+            _isDraggingBendHandle = false;
+
+            if (Project != null) FileService.SaveProject(Project);
+
+            _draggingRelation = null;
+            e.Handled = true;
+        }
+
+
+        private ContextMenu BuildRelationContextMenu(Relation rel)
+        {
+            var menu = new ContextMenu();
+
+            var deleteItem = new MenuItem { Header = "Delete relation" };
+            deleteItem.Click += (_, _) =>
+            {
+                Project?.Relations.Remove(rel);
+                if (Project != null) FileService.SaveProject(Project);
+                RenderRelations();
+            };
+            menu.Items.Add(deleteItem);
+
+            var settingsItem = new MenuItem
+            {
+                Header = "Relation settings",
+                IsEnabled = false   // placeholder
+            };
+            menu.Items.Add(settingsItem);
+
+            return menu;
+        }
+
         private static TextBlock BuildPreviewTextBlock(
     string text,
     double maxHeight,
@@ -1196,6 +1651,10 @@ namespace Apex.Views
             menu.Items.Add(previewItem);
             menu.Items.Add(new Separator());
 
+            var addRelationItem = new MenuItem { Header = "Add relation" };
+            addRelationItem.Click += (_, _) => BeginDrawRelation("note", card.RelativePath);
+            menu.Items.Add(addRelationItem);
+
             var sizeItem = new MenuItem { Header = "Set size" };
             var sizeOptions = new (string Label, string Value)[]
             {
@@ -1297,6 +1756,8 @@ namespace Apex.Views
                         MessageBoxImage.Information);
             };
             menu.Items.Add(copyAsTemplateItem);
+
+
 
 
             var deleteItem = new MenuItem { Header = "Delete" };
@@ -1653,6 +2114,12 @@ namespace Apex.Views
             };
             menu.Items.Add(editItem);
 
+            var addRelationItem = new MenuItem { Header = "Add relation" };
+            addRelationItem.Click += (_, _) => BeginDrawRelation("title", titleCard.Id);
+            menu.Items.Add(addRelationItem);
+
+
+
             var deleteItem = new MenuItem { Header = "Delete" };
             deleteItem.Click += (_, _) =>
             {
@@ -1723,6 +2190,10 @@ namespace Apex.Views
             catItem.Items.Add(noCatItem);
             menu.Items.Add(catItem);
 
+            var addRelationItem = new MenuItem { Header = "Add relation" };
+            addRelationItem.Click += (_, _) => BeginDrawRelation("image", imageCard.Id);
+            menu.Items.Add(addRelationItem);
+
             var deleteItem = new MenuItem { Header = "Delete" };
             deleteItem.Click += (_, _) =>
             {
@@ -1775,7 +2246,9 @@ namespace Apex.Views
 
         private void BoardView_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            // Check that the click is NOT on a card
+            // Nie startuj pan podczas rysowania relacji
+            if (_isDrawingRelation) return;
+
             if (!IsClickOnCard(e.OriginalSource as DependencyObject))
             {
                 StartPan(e);
@@ -1820,8 +2293,11 @@ namespace Apex.Views
 
         private bool IsClickOnCard(DependencyObject? source)
         {
+            if (FindAncestor<System.Windows.Shapes.Ellipse>(source) != null)
+                return true;
+
             return FindAncestor<Border>(source,
-            b => b.Tag is NoteCard || b.Tag is ImageCard || b.Tag is TitleCard) != null;
+                b => b.Tag is NoteCard || b.Tag is ImageCard || b.Tag is TitleCard) != null;
         }
 
         private void StartPan(MouseEventArgs e)

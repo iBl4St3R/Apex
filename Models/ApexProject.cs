@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace Apex.Models;
 
@@ -35,6 +35,9 @@ public class ApexProject
 
     [JsonPropertyName("titleCards")]
     public List<TitleCard> TitleCards { get; set; } = new();
+
+    [JsonPropertyName("relations")]
+    public List<Relation> Relations { get; set; } = new();
 
     public ApexProject() { }
 
