@@ -18,6 +18,14 @@ All notes are stored as `.md` files on disk — readable and editable by any tex
 
 ---
 
+## 🌐 Live Demo
+
+> **[▶ Open interactive board demo](https://ibl4st3r.github.io/Apex/ProjectSample.html)**
+
+An exported Apex project — fully interactive in the browser.
+Pan, zoom, click cards to read notes, explore relations between them.
+No installation required.
+
 ## 📸 Overview
 
 Apex gives you two ways to look at your notes:
