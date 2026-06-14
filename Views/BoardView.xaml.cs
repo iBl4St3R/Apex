@@ -1137,49 +1137,106 @@ namespace Apex.Views
             {
                 Point src = GetElementCenter(rel.SourceType, rel.SourceRef);
                 Point tgtCenter = GetElementCenter(rel.TargetType, rel.TargetRef);
-                // Punkt kontrolny do wyznaczenia kierunku wejścia w element
-                double midXDir = (src.X + tgtCenter.X) / 2 + rel.BendX;
-                double midYDir = (src.Y + tgtCenter.Y) / 2 + rel.BendY;
-                Point tgt = GetElementEdgePoint(rel.TargetType, rel.TargetRef, new Point(midXDir, midYDir));
 
-                // Pomiń relacje do elementów które nie istnieją
-                if (src == tgt && src == new Point(0, 0)) continue;
+                if (src == tgtCenter && src == new Point(0, 0)) continue;
 
-                // Kontrolny punkt (bend)
-                double midX = (src.X + tgt.X) / 2 + rel.BendX;
-                double midY = (src.Y + tgt.Y) / 2 + rel.BendY;
+                double midX = (src.X + tgtCenter.X) / 2 + rel.BendX;
+                double midY = (src.Y + tgtCenter.Y) / 2 + rel.BendY;
+                Point tgt = GetElementEdgePoint(rel.TargetType, rel.TargetRef, new Point(midX, midY));
 
-                // Bezier path — pod kartami
-                var path = BuildRelationPath(src, new Point(midX, midY), tgt);
+                var path = BuildRelationPath(src, new Point(midX, midY), tgt, rel.LineColor, rel.LineThickness);
 
-                // Arrowhead — pod kartami
                 var arrow = new System.Windows.Shapes.Polygon
                 {
-                    Fill = new SolidColorBrush(Color.FromArgb(200, 203, 166, 247)),
+                    Fill = new SolidColorBrush(ParseHexColor(rel.LineColor, 200)),
                     IsHitTestVisible = false
                 };
                 UpdateArrowHead(arrow, midX, midY, tgt.X, tgt.Y);
 
-                // Wstaw linię i strzałkę PRZED kartami
                 BoardCanvas.Children.Insert(lineInsertIndex, path);
                 lineInsertIndex++;
                 BoardCanvas.Children.Insert(lineInsertIndex, arrow);
                 lineInsertIndex++;
 
-
-                // Zastąp:
-                // Punkt na krzywej Beziera przy t=0.5:
-                // B(0.5) = 0.25*src + 0.5*ctrl + 0.25*tgt
-                double handleX = 0.25 * src.X + 0.5 * midX + 0.25 * tgt.X;
-                double handleY = 0.25 * src.Y + 0.5 * midY + 0.25 * tgt.Y;
-                var handle = BuildBendHandle(rel, handleX, handleY);
-
-                BoardCanvas.Children.Add(handle);
+                // Sprawdź czy oba elementy są locked — jeśli tak, nie renderuj handle'a
+                bool bothLocked = IsElementLocked(rel.SourceType, rel.SourceRef) && IsElementLocked(rel.TargetType, rel.TargetRef);
 
                 _relationElements.Add(path);
                 _relationElements.Add(arrow);
-                _relationElements.Add(handle);
+
+                if (!bothLocked)
+                {
+                    double handleX = 0.25 * src.X + 0.5 * midX + 0.25 * tgt.X;
+                    double handleY = 0.25 * src.Y + 0.5 * midY + 0.25 * tgt.Y;
+                    var handle = BuildBendHandle(rel, handleX, handleY);
+                    BoardCanvas.Children.Add(handle);
+                    _relationElements.Add(handle);
+                }
+                else
+                {
+                    // Placeholder null żeby indeksy path/arrow/handle były spójne w UpdateRelationVisuals
+                    // Nie dodajemy nic — ale UpdateRelationVisuals i tak nie będzie wołane bo drag nie działa
+                }
             }
+        }
+
+        private bool IsElementLocked(string type, string refId)
+        {
+            foreach (var child in BoardCanvas.Children.OfType<Border>())
+            {
+                bool match = type switch
+                {
+                    "note" => child.Tag is NoteCard nc && string.Equals(nc.RelativePath, refId, StringComparison.OrdinalIgnoreCase),
+                    "title" => child.Tag is TitleCard tc && string.Equals(tc.Id, refId, StringComparison.OrdinalIgnoreCase),
+                    "image" => child.Tag is ImageCard ic && string.Equals(ic.Id, refId, StringComparison.OrdinalIgnoreCase),
+                    _ => false
+                };
+                if (match)
+                {
+                    return child.Tag switch
+                    {
+                        NoteCard nc => nc.Locked,
+                        TitleCard tc => tc.Locked,
+                        ImageCard ic => ic.Locked,
+                        _ => false
+                    };
+                }
+            }
+            return false;
+        }
+
+        private System.Windows.Shapes.Path BuildRelationPath(Point src, Point ctrl, Point tgt, string color = "#CBA6F7", double thickness = 1.5)
+        {
+            var geo = new System.Windows.Media.PathGeometry();
+            var fig = new System.Windows.Media.PathFigure { StartPoint = src };
+            fig.Segments.Add(new System.Windows.Media.QuadraticBezierSegment(ctrl, tgt, true));
+            geo.Figures.Add(fig);
+
+            return new System.Windows.Shapes.Path
+            {
+                Data = geo,
+                Stroke = new SolidColorBrush(ParseHexColor(color, 160)),
+                StrokeThickness = thickness,
+                Fill = System.Windows.Media.Brushes.Transparent,
+                IsHitTestVisible = false
+            };
+        }
+
+        private static Color ParseHexColor(string hex, byte alpha = 255)
+        {
+            try
+            {
+                hex = hex.TrimStart('#');
+                if (hex.Length == 6)
+                {
+                    byte r = Convert.ToByte(hex[..2], 16);
+                    byte g = Convert.ToByte(hex[2..4], 16);
+                    byte b = Convert.ToByte(hex[4..6], 16);
+                    return Color.FromArgb(alpha, r, g, b);
+                }
+            }
+            catch { }
+            return Color.FromArgb(alpha, 203, 166, 247);
         }
 
         private System.Windows.Shapes.Path BuildRelationPath(Point src, Point ctrl, Point tgt)
@@ -1232,6 +1289,20 @@ namespace Apex.Views
             var menu = new ContextMenu();
             menu.PlacementTarget = handle;
 
+            var settingsItem = new MenuItem { Header = "Relation settings" };
+            settingsItem.Click += (_, _) =>
+            {
+                var dialog = new RelationSettingsDialog(rel.LineColor, rel.LineThickness) { Owner = Window.GetWindow(this) };
+                if (dialog.ShowDialog() == true)
+                {
+                    rel.LineColor = dialog.ResultColor;
+                    rel.LineThickness = dialog.ResultThickness;
+                    if (Project != null) FileService.SaveProject(Project);
+                    RenderRelations();
+                }
+            };
+            menu.Items.Add(settingsItem);
+
             var deleteItem = new MenuItem { Header = "Delete relation" };
             deleteItem.Click += (_, _) =>
             {
@@ -1240,13 +1311,6 @@ namespace Apex.Views
                 RenderRelations();
             };
             menu.Items.Add(deleteItem);
-
-            var settingsItem = new MenuItem
-            {
-                Header = "Relation settings",
-                IsEnabled = false
-            };
-            menu.Items.Add(settingsItem);
 
             menu.IsOpen = true;
             e.Handled = true;

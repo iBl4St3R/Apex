@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace Apex.Models;
 
@@ -23,21 +23,21 @@ public class Relation
     [JsonPropertyName("targetRef")]
     public string TargetRef { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Control point offset from the midpoint of the straight line.
-    /// Allows bending the arrow by dragging the midpoint handle.
-    /// </summary>
     [JsonPropertyName("bendX")]
     public double BendX { get; set; } = 0;
 
     [JsonPropertyName("bendY")]
     public double BendY { get; set; } = 0;
 
+    [JsonPropertyName("lineColor")]
+    public string LineColor { get; set; } = "#CBA6F7";
+
+    [JsonPropertyName("lineThickness")]
+    public double LineThickness { get; set; } = 1.5;
+
     public Relation() { }
 
-    public Relation(string id,
-        string sourceType, string sourceRef,
-        string targetType, string targetRef)
+    public Relation(string id, string sourceType, string sourceRef, string targetType, string targetRef)
     {
         Id = id;
         SourceType = sourceType;
@@ -48,7 +48,7 @@ public class Relation
 
     public bool IsSameAs(Relation other) =>
         string.Equals(SourceType, other.SourceType, StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(SourceRef,  other.SourceRef,  StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(SourceRef, other.SourceRef, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(TargetType, other.TargetType, StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(TargetRef,  other.TargetRef,  StringComparison.OrdinalIgnoreCase);
+        string.Equals(TargetRef, other.TargetRef, StringComparison.OrdinalIgnoreCase);
 }
