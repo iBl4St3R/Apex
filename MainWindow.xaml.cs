@@ -508,5 +508,63 @@ namespace Apex
             public string RelativePath { get; set; } = "";
             public NoteCard? Card { get; set; }
         }
+
+
+        private void ExportHtmlButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (Project == null) return;
+
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Export project to HTML",
+                Filter = "HTML file (*.html)|*.html",
+                FileName = Project.ProjectName + ".html",
+                DefaultExt = ".html"
+            };
+
+            if (dialog.ShowDialog() != true) return;
+
+            string outputPath = dialog.FileName;
+
+            // Pokaż progress przez zmianę tytułu okna
+            string oldTitle = Title;
+            Title = "Exporting…";
+            IsEnabled = false;
+
+            try
+            {
+                ExportService.Export(Project, outputPath);
+
+                string folderName = Project.ProjectName;
+                System.Windows.MessageBox.Show(
+                    $"Export complete!\n\n" +
+                    $"• {System.IO.Path.GetFileName(outputPath)}\n" +
+                    $"• {folderName}/ (images folder)\n\n" +
+                    $"Keep both files in the same directory.",
+                    "Export Complete",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+
+                // Otwórz folder wynikowy
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = System.IO.Path.GetDirectoryName(outputPath)!,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(
+                    $"Export failed:\n{ex.Message}",
+                    "Export Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            finally
+            {
+                IsEnabled = true;
+                Title = oldTitle;
+            }
+        }
     }
 }
