@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text;
 using System.Text.Json;
 using Apex.Models;
@@ -54,23 +54,75 @@ public static class ExportService
 
     private static void CopyImages(ApexProject project, string rootFolder, string imgFolder)
     {
+        // 1. Kopiuj pliki z .images/ (ImageCards)
         string imagesSource = Path.Combine(rootFolder, ".images");
-        if (!Directory.Exists(imagesSource)) return;
-
-        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var ic in project.ImageCards)
+        if (Directory.Exists(imagesSource))
         {
-            string rel = ic.RelativePath.Replace('/', Path.DirectorySeparatorChar);
-            used.Add(rel);
+            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var ic in project.ImageCards)
+            {
+                string rel = ic.RelativePath.Replace('/', Path.DirectorySeparatorChar);
+                used.Add(rel);
+            }
+
+            foreach (string srcFile in Directory.EnumerateFiles(imagesSource))
+            {
+                string rel = ".images" + Path.DirectorySeparatorChar + Path.GetFileName(srcFile);
+                if (!used.Contains(rel)) continue;
+                string dest = Path.Combine(imgFolder, Path.GetFileName(srcFile));
+                File.Copy(srcFile, dest, overwrite: true);
+            }
         }
 
-        foreach (string srcFile in Directory.EnumerateFiles(imagesSource))
-        {
-            string rel = ".images" + Path.DirectorySeparatorChar + Path.GetFileName(srcFile);
-            if (!used.Contains(rel)) continue; // kopiuj tylko używane
+        // 2. Kopiuj obrazki osadzone w MD (src="logo.png", src="preview.png" itp.)
+        //    które leżą bezpośrednio w root folderze lub podfolderach projektu
+        var imgExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg" };
 
-            string dest = Path.Combine(imgFolder, Path.GetFileName(srcFile));
-            File.Copy(srcFile, dest, overwrite: true);
+        foreach (var card in project.Cards)
+        {
+            string fullPath = FileService.GetFullPath(rootFolder, card.RelativePath);
+            if (!File.Exists(fullPath)) continue;
+
+            string markdown = File.ReadAllText(fullPath);
+
+            // Znajdź wszystkie src="..." w HTML i MD
+            var srcMatches = System.Text.RegularExpressions.Regex.Matches(
+                markdown,
+                @"src\s*=\s*[""']([^""']+)[""']",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            foreach (System.Text.RegularExpressions.Match m in srcMatches)
+            {
+                string src = m.Groups[1].Value;
+
+                // Pomiń URL-e i ścieżki absolutne
+                if (src.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                    src.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+                    src.StartsWith("/") ||
+                    src.StartsWith("data:"))
+                    continue;
+
+                // Pomiń obrazki z .images/ — już obsłużone wyżej
+                if (src.StartsWith(".images/", StringComparison.OrdinalIgnoreCase) ||
+                    src.StartsWith(".images\\", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                // Sprawdź rozszerzenie
+                string ext = Path.GetExtension(src);
+                if (!imgExtensions.Contains(ext)) continue;
+
+                // Rozwiąż ścieżkę względem folderu notatki
+                string noteDir = Path.GetDirectoryName(fullPath) ?? rootFolder;
+                string imgFullPath = Path.GetFullPath(Path.Combine(noteDir, src));
+
+                if (!File.Exists(imgFullPath)) continue;
+
+                // Kopiuj do folderu wynikowego (tylko nazwa pliku — bez podfolderów)
+                string destName = Path.GetFileName(imgFullPath);
+                string dest = Path.Combine(imgFolder, destName);
+                File.Copy(imgFullPath, dest, overwrite: true);
+            }
         }
     }
 
@@ -89,18 +141,43 @@ public static class ExportService
             string modified = "";
             try { modified = new FileInfo(fullPath).LastWriteTime.ToString("yyyy-MM-dd HH:mm"); } catch { }
 
+            double effectiveWidth = c.CustomWidth ?? (c.CardSize switch { "medium" => 440, "large" => 880, _ => 220 });
+            double effectiveHeight = c.CustomHeight ?? (c.CardSize switch { "medium" => 160, "large" => 320, _ => 120 });
+
+            int previewMaxChars;
+            if (c.CustomWidth.HasValue || c.CustomHeight.HasValue)
+                previewMaxChars = (int)((effectiveHeight - 60) / 16.0 * (effectiveWidth / 10.0));
+            else
+                previewMaxChars = c.CardSize switch { "medium" => 300, "large" => 600, _ => 100 };
+
+            previewMaxChars = Math.Clamp(previewMaxChars, 50, 8000);
+
+            string previewMarkdown = markdown.Length > previewMaxChars
+                ? markdown[..previewMaxChars]
+                : markdown;
+            string previewHtml = Markdown.ToHtml(previewMarkdown, Pipeline);
+
+            // ── Fix 1: dodaj prefix folderu obrazków ──────────────────────────
+            string imgPrefixPattern = @"(<img[^>]*\ssrc="")(?!https?://|/|data:)([^""]+""[^>]*>)";
+            string imgReplacement = $"$1{projectName}/$2";
+            htmlContent = System.Text.RegularExpressions.Regex.Replace(htmlContent, imgPrefixPattern, imgReplacement);
+            previewHtml = System.Text.RegularExpressions.Regex.Replace(previewHtml, imgPrefixPattern, imgReplacement);
+            // ──────────────────────────────────────────────────────────────────
+
             return new
             {
                 relativePath = c.RelativePath.Replace('\\', '/'),
-                boardX       = c.BoardX,
-                boardY       = c.BoardY,
-                categoryId   = c.CategoryId,
-                customWidth  = c.CustomWidth,
+                boardX = c.BoardX,
+                boardY = c.BoardY,
+                categoryId = c.CategoryId,
+                customWidth = c.CustomWidth,
                 customHeight = c.CustomHeight,
-                cardSize     = c.CardSize ?? "minimum",
-                locked       = c.Locked,
+                cardSize = c.CardSize ?? "minimum",
+                locked = c.Locked,
                 htmlContent,
+                previewHtml,
                 preview,
+                markdownRaw = markdown,   // ← dodaj tę linię
                 modifiedDate = modified
             };
         }).ToList();
@@ -261,6 +338,20 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg2);color:var
 .cat-badge{font-size:10px;font-weight:700;color:#fff;padding:2px 6px;border-radius:4px;white-space:nowrap;flex-shrink:0}
 .card-folder{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card-preview{font-size:11px;color:var(--text3);line-height:1.4;overflow:hidden;flex:1;word-break:break-word}
+.card-preview h1{font-size:14px;font-weight:700;color:var(--text2);margin:2px 0}
+.card-preview h2{font-size:13px;font-weight:600;color:var(--text2);margin:2px 0}
+.card-preview h3,.card-preview h4{font-size:12px;font-weight:600;color:var(--text3);margin:1px 0}
+.card-preview p{font-size:11px;color:var(--text3);margin:2px 0;line-height:1.4}
+.card-preview ul,.card-preview ol{padding-left:14px;font-size:11px;color:var(--text3);margin:2px 0}
+.card-preview li{line-height:1.4}
+.card-preview code{font-family:Consolas,monospace;font-size:10px;background:#18182A;color:#F38BA8;padding:1px 3px;border-radius:2px}
+.card-preview pre{background:#18182A;border:1px solid var(--border2);border-radius:4px;padding:6px 8px;overflow:hidden;margin:3px 0;font-size:10px;color:var(--text2);font-family:Consolas,monospace;white-space:pre-wrap;word-break:break-all}
+.card-preview pre code{background:none;color:var(--text2);padding:0;font-size:10px}
+.card-preview hr{border:none;border-top:1px solid var(--border);margin:4px 0}
+.card-preview strong{font-weight:700;color:var(--text2)}
+.card-preview em{font-style:italic}
+.card-preview a{color:var(--blue);text-decoration:none}
+.card-preview blockquote{border-left:2px solid var(--border2);padding-left:6px;color:var(--muted);margin:2px 0}
 .card-date{font-size:10px;color:var(--muted);text-align:right;margin-top:auto}
 
 /* ── TITLE CARD ── */
@@ -278,6 +369,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg2);color:var
 #modal{background:var(--bg);border:1px solid var(--border2);border-radius:12px;width:min(860px,92vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
 #modal-header{background:var(--bg3);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;gap:10px}
 #modal-title{font-size:16px;font-weight:700;color:var(--text);flex:1}
+#modal-copy{background:var(--surface);border:none;color:var(--text2);height:30px;padding:0 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap}
+#modal-copy:hover{background:var(--surface2)}
+#modal-copy.copied{background:var(--green);color:#1E1E2E}
 #modal-cat{font-size:11px;font-weight:700;color:#fff;padding:2px 8px;border-radius:4px}
 #modal-close{background:var(--surface);border:none;color:var(--text2);width:30px;height:30px;border-radius:6px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center}
 #modal-close:hover{background:var(--surface2)}
@@ -319,7 +413,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg2);color:var
 <div id="toolbar">
   <h1>{{projectName}}</h1>
   <button class="tb-btn" id="btn-fit" onclick="fitAll()">Fit all</button>
-  <button class="tb-btn" id="btn-conn" onclick="toggleConnections()">Connections</button>
+ <button class="tb-btn" id="btn-conn" onclick="toggleConnections()" style="display:none">Connections</button>
   <span style="color:var(--muted);font-size:11px;margin-left:8px">Scroll = zoom · Drag = pan · Click card = preview</span>
 </div>
 
@@ -337,6 +431,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg2);color:var
     <div id="modal-header">
       <div id="modal-title"></div>
       <div id="modal-cat" style="display:none"></div>
+        <button id="modal-copy" onclick="copyModalMd()">Copy MD</button>
       <button id="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div id="modal-body"></div>
@@ -430,13 +525,26 @@ function buildBoard(){
       body.appendChild(titleRow);
     }
 
-    // preview
-    if(c.preview){
-      const prev=document.createElement('div');
-      prev.className='card-preview';
-      prev.textContent=c.preview;
-      body.appendChild(prev);
-    }
+    // preview — rendered HTML proportional to card size
+const previewContent = c.previewHtml || c.preview || '';
+if(previewContent){
+  const prev=document.createElement('div');
+  prev.className='card-preview';
+  if(c.previewHtml){
+    prev.innerHTML=c.previewHtml;
+    // Wiki-linki w preview → klikalne
+    prev.querySelectorAll('p,li').forEach(node=>{
+      node.innerHTML=node.innerHTML.replace(/\[\[([^\]]+)\]\]/g,(m,name)=>{
+        return `<a style="color:var(--blue)" href="#" onclick="event.stopPropagation();
+                const t=DATA.cards.find(c=>pathToTitle(c.relativePath)==='${name}');
+                if(t)openModal(t);return false;">${name}</a>`;
+      });
+    });
+  } else {
+    prev.textContent=c.preview;
+  }
+  body.appendChild(prev);
+}
 
     // date
     if(c.modifiedDate){
@@ -486,6 +594,38 @@ function pathFolder(p){
   return parts.length>1?parts.slice(0,-1).join('/'):null;
 }
 
+function copyModalMd(){
+  if(!currentModalPath) return;
+  const card=DATA.cards.find(c=>c.relativePath===currentModalPath);
+  if(!card||!card.markdownRaw) return;
+
+  navigator.clipboard.writeText(card.markdownRaw).then(()=>{
+    const btn=document.getElementById('modal-copy');
+    btn.textContent='Copied!';
+    btn.classList.add('copied');
+    setTimeout(()=>{
+      btn.textContent='Copy MD';
+      btn.classList.remove('copied');
+    },2000);
+  }).catch(()=>{
+    // fallback dla starszych przeglądarek
+    const ta=document.createElement('textarea');
+    ta.value=card.markdownRaw;
+    ta.style.position='fixed';
+    ta.style.opacity='0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    const btn=document.getElementById('modal-copy');
+    btn.textContent='Copied!';
+    btn.classList.add('copied');
+    setTimeout(()=>{ btn.textContent='Copy MD'; btn.classList.remove('copied'); },2000);
+  });
+}
+
+
+
 // ── RELATIONS SVG ─────────────────────────────────────────────────────
 function cardCenter(type,ref){
   let el=null;
@@ -522,10 +662,8 @@ function makeArrowHead(svg, x1,y1,x2,y2, color, thickness){
 }
 
 function renderRelations(){
-  // Clear old relation/connection elements
   svgOverlay.querySelectorAll('.rel,.conn').forEach(e=>e.remove());
 
-  // Relations (user-drawn arrows)
   DATA.relations.forEach(r=>{
     const src=cardCenter(r.sourceType,r.sourceRef);
     const tgt=cardCenter(r.targetType,r.targetRef);
@@ -543,13 +681,34 @@ function renderRelations(){
     path.setAttribute('stroke',`rgba(${rgb.r},${rgb.g},${rgb.b},0.65)`);
     path.setAttribute('stroke-width',thick);
     path.classList.add('rel');
-    svgOverlay.insertBefore(path,svgOverlay.firstChild);
+    svgOverlay.appendChild(path);
 
-    makeArrowHead(svgOverlay,midX,midY,tgt.x,tgt.y,color,thick);
-    svgOverlay.lastElementChild.classList.add('rel');
+    // Grot na środku krzywej Beziera (t=0.5)
+    // Punkt na krzywej przy t=0.5: B(0.5) = 0.25*src + 0.5*mid + 0.25*tgt
+    const bx = 0.25*src.x + 0.5*midX + 0.25*tgt.x;
+    const by = 0.25*src.y + 0.5*midY + 0.25*tgt.y;
+    // Kierunek stycznej przy t=0.5: B'(0.5) = (mid-src) + (tgt-mid) = tgt-src (przeskalowane)
+    // Dokładnie: B'(t) = 2*(1-t)*(mid-src) + 2*t*(tgt-mid)
+    // Przy t=0.5: B'(0.5) = (mid-src) + (tgt-mid) = tgt - src
+    const dx = tgt.x - src.x;
+    const dy = tgt.y - src.y;
+    const angle = Math.atan2(dy, dx);
+
+    const scale=Math.max(0.7,Math.min(3,thick/1.5));
+    const aLen=12*scale, aW=6*scale;
+    const ax=bx-aLen*Math.cos(angle), ay=by-aLen*Math.sin(angle);
+
+    const arrow=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    arrow.setAttribute('points',[
+      `${bx},${by}`,
+      `${ax-aW*Math.sin(angle)},${ay+aW*Math.cos(angle)}`,
+      `${ax+aW*Math.sin(angle)},${ay-aW*Math.cos(angle)}`
+    ].join(' '));
+    arrow.setAttribute('fill',`rgba(${rgb.r},${rgb.g},${rgb.b},0.9)`);
+    arrow.classList.add('rel');
+    svgOverlay.appendChild(arrow);
   });
 
-  // Connections ([[links]])
   if(connectionsVisible){
     DATA.connections.forEach(cn=>{
       const src=cardCenter('note',cn.sourcePath);
@@ -562,10 +721,21 @@ function renderRelations(){
       line.setAttribute('stroke','rgba(137,180,250,0.45)');
       line.setAttribute('stroke-width','1.5');
       line.classList.add('conn');
-      svgOverlay.insertBefore(line,svgOverlay.firstChild);
+      svgOverlay.appendChild(line);
 
-      makeArrowHead(svgOverlay,src.x,src.y,tgt.x,tgt.y,'#89B4FA',1.5);
-      svgOverlay.lastElementChild.classList.add('conn');
+      // Grot na środku prostej linii
+      const mx=(src.x+tgt.x)/2, my=(src.y+tgt.y)/2;
+      const angle=Math.atan2(tgt.y-src.y, tgt.x-src.x);
+      const ax=mx-10*Math.cos(angle), ay=my-10*Math.sin(angle);
+      const arr=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+      arr.setAttribute('points',[
+        `${mx},${my}`,
+        `${ax-5*Math.sin(angle)},${ay+5*Math.cos(angle)}`,
+        `${ax+5*Math.sin(angle)},${ay-5*Math.cos(angle)}`
+      ].join(' '));
+      arr.setAttribute('fill','rgba(137,180,250,0.7)');
+      arr.classList.add('conn');
+      svgOverlay.appendChild(arr);
     });
   }
 }

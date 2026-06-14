@@ -241,36 +241,111 @@ public static class MarkdownRenderer
         var paragraph = new Paragraph
         {
             Margin = new Thickness(0, 0, 0, 12),
-            Padding = new Thickness(12, 8, 12, 8),
+            Padding = new Thickness(0),
             Background = new SolidColorBrush(Color.FromRgb(24, 24, 37)),
-            FontFamily = new FontFamily("Consolas"),
-            FontSize = 12,
             BorderBrush = new SolidColorBrush(Color.FromRgb(49, 50, 68)),
             BorderThickness = new Thickness(1),
         };
 
-        // Label języka w prawym górnym rogu — przez InlineUIContainer
-        if (!string.IsNullOrEmpty(language))
-        {
-            var langLabel = new TextBlock
-            {
-                Text = language,
-                FontSize = 10,
-                FontFamily = new FontFamily("Segoe UI"),
-                Foreground = new SolidColorBrush(Color.FromRgb(108, 112, 134)),
-                HorizontalAlignment = HorizontalAlignment.Right,
-                Margin = new Thickness(0, 0, 0, 4)
-            };
-            var labelContainer = new InlineUIContainer(langLabel);
-            paragraph.Inlines.Add(labelContainer);
-            paragraph.Inlines.Add(new LineBreak());
-        }
+        var outerGrid = new Grid { Background = new SolidColorBrush(Color.FromRgb(24, 24, 37)) };
+        outerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        outerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        // Syntax highlighting
+        // ── Header bar ──
+        var headerBar = new Grid { Margin = new Thickness(0) };
+        headerBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        headerBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        string originalLabel = string.IsNullOrEmpty(language) ? "code" : language;
+
+        var copyBtn = new System.Windows.Controls.Button
+        {
+            Content = originalLabel,
+            FontSize = 10,
+            FontFamily = new FontFamily("Segoe UI"),
+            FontWeight = FontWeights.SemiBold,
+            Padding = new Thickness(10, 3, 10, 3),
+            Margin = new Thickness(8, 4, 0, 4),
+            Background = new SolidColorBrush(Color.FromRgb(49, 50, 68)),
+            Foreground = new SolidColorBrush(Color.FromRgb(166, 173, 200)),
+            BorderThickness = new Thickness(1),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(69, 71, 90)),
+            Cursor = Cursors.Hand,
+            ToolTip = "Copy code",
+            Tag = codeText
+        };
+
+        copyBtn.MouseEnter += (_, _) =>
+        {
+            copyBtn.Background = new SolidColorBrush(Color.FromRgb(69, 71, 90));
+            copyBtn.Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244));
+        };
+        copyBtn.MouseLeave += (_, _) =>
+        {
+            copyBtn.Background = new SolidColorBrush(Color.FromRgb(49, 50, 68));
+            copyBtn.Foreground = new SolidColorBrush(Color.FromRgb(166, 173, 200));
+        };
+
+        copyBtn.Click += (_, _) =>
+        {
+            try
+            {
+                Clipboard.SetText(codeText);
+                copyBtn.Content = "✓ copied";
+                copyBtn.Foreground = new SolidColorBrush(Color.FromRgb(166, 227, 161));
+                copyBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(166, 227, 161));
+                var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+                timer.Tick += (_, _) =>
+                {
+                    copyBtn.Content = originalLabel;
+                    copyBtn.Foreground = new SolidColorBrush(Color.FromRgb(166, 173, 200));
+                    copyBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(69, 71, 90));
+                    timer.Stop();
+                };
+                timer.Start();
+            }
+            catch { }
+        };
+
+        Grid.SetColumn(copyBtn, 0);
+        headerBar.Children.Add(copyBtn);
+
+        var spacer = new Border();
+        Grid.SetColumn(spacer, 1);
+        headerBar.Children.Add(spacer);
+
+        var separator = new Border
+        {
+            Height = 1,
+            Background = new SolidColorBrush(Color.FromRgb(49, 50, 68)),
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+
+        var headerStack = new StackPanel();
+        headerStack.Children.Add(headerBar);
+        headerStack.Children.Add(separator);
+
+        Grid.SetRow(headerStack, 0);
+        outerGrid.Children.Add(headerStack);
+
+        // ── Kod z highlighting ──
+        var codePanel = new TextBlock
+        {
+            FontFamily = new FontFamily("Consolas"),
+            FontSize = 12,
+            Padding = new Thickness(12, 8, 12, 10),
+            TextWrapping = TextWrapping.NoWrap,
+            Background = System.Windows.Media.Brushes.Transparent
+        };
+
         var highlightedRuns = GetHighlightedRuns(codeText, language);
         foreach (var inline in highlightedRuns)
-            paragraph.Inlines.Add(inline);
+            codePanel.Inlines.Add(inline);
 
+        Grid.SetRow(codePanel, 1);
+        outerGrid.Children.Add(codePanel);
+
+        paragraph.Inlines.Add(new InlineUIContainer(outerGrid));
         return paragraph;
     }
 
