@@ -1136,7 +1136,11 @@ namespace Apex.Views
             foreach (var rel in Project.Relations)
             {
                 Point src = GetElementCenter(rel.SourceType, rel.SourceRef);
-                Point tgt = GetElementCenter(rel.TargetType, rel.TargetRef);
+                Point tgtCenter = GetElementCenter(rel.TargetType, rel.TargetRef);
+                // Punkt kontrolny do wyznaczenia kierunku wejścia w element
+                double midXDir = (src.X + tgtCenter.X) / 2 + rel.BendX;
+                double midYDir = (src.Y + tgtCenter.Y) / 2 + rel.BendY;
+                Point tgt = GetElementEdgePoint(rel.TargetType, rel.TargetRef, new Point(midXDir, midYDir));
 
                 // Pomiń relacje do elementów które nie istnieją
                 if (src == tgt && src == new Point(0, 0)) continue;
@@ -1282,35 +1286,19 @@ namespace Apex.Views
             _bendDragStartX = rel.BendX;
             _bendDragStartY = rel.BendY;
 
-            // Capture na poziomie canvas żeby nie tracić eventów
             handle.CaptureMouse();
 
-            // MouseMove na canvas — nie traci się gdy kursor wychodzi poza handle
-            BoardCanvas.MouseMove += BendHandle_GlobalMouseMove;
-
             e.Handled = true;
         }
 
-        private void BendHandle_GlobalMouseMove(object sender, MouseEventArgs e)
-        {
-            if (!_isDraggingBendHandle || _draggingRelation == null) return;
-
-            Point cur = e.GetPosition(BoardCanvas);
-            double dx = cur.X - _bendDragStartMouse.X;
-            double dy = cur.Y - _bendDragStartMouse.Y;
-
-            _draggingRelation.BendX = _bendDragStartX + dx;
-            _draggingRelation.BendY = _bendDragStartY + dy;
-
-            RenderRelations();
-            e.Handled = true;
-        }
+        
 
 
 
         private void BendHandle_MouseMove(object sender, MouseEventArgs e)
         {
             if (!_isDraggingBendHandle || _draggingRelation == null) return;
+            if (sender is not System.Windows.Shapes.Ellipse handle) return;
 
             Point cur = e.GetPosition(BoardCanvas);
             double dx = cur.X - _bendDragStartMouse.X;
@@ -1319,8 +1307,9 @@ namespace Apex.Views
             _draggingRelation.BendX = _bendDragStartX + dx;
             _draggingRelation.BendY = _bendDragStartY + dy;
 
-            // Live re-render
-            RenderRelations();
+            // Zaktualizuj wizualnie BEZ pełnego RenderRelations() — żeby nie tracić mouse capture
+            UpdateRelationVisuals(_draggingRelation, handle);
+
             e.Handled = true;
         }
 
@@ -1331,14 +1320,96 @@ namespace Apex.Views
             if (sender is System.Windows.Shapes.Ellipse handle)
                 handle.ReleaseMouseCapture();
 
-            BoardCanvas.MouseMove -= BendHandle_GlobalMouseMove;
+            
 
             _isDraggingBendHandle = false;
 
             if (Project != null) FileService.SaveProject(Project);
 
+            // Pełny rerender dopiero po puszczeniu przycisku
+            RenderRelations();
+
             _draggingRelation = null;
             e.Handled = true;
+        }
+
+        private void UpdateRelationVisuals(Relation rel, System.Windows.Shapes.Ellipse handle)
+        {
+            Point src = GetElementCenter(rel.SourceType, rel.SourceRef);
+            Point tgtCenter = GetElementCenter(rel.TargetType, rel.TargetRef);
+
+            double midX = (src.X + tgtCenter.X) / 2 + rel.BendX;
+            double midY = (src.Y + tgtCenter.Y) / 2 + rel.BendY;
+
+            // Użyj midX/midY jako punktu "skąd przychodzimy" żeby edge point był spójny z RenderRelations
+            Point tgt = GetElementEdgePoint(rel.TargetType, rel.TargetRef, new Point(midX, midY));
+
+            // Handle na krzywej Beziera liczonej do tgt (krawędź) — tak samo jak RenderRelations
+            double handleX = 0.25 * src.X + 0.5 * midX + 0.25 * tgt.X;
+            double handleY = 0.25 * src.Y + 0.5 * midY + 0.25 * tgt.Y;
+
+            Canvas.SetLeft(handle, handleX - handle.Width / 2);
+            Canvas.SetTop(handle, handleY - handle.Height / 2);
+
+            int handleIdx = _relationElements.IndexOf(handle);
+            if (handleIdx < 2) return;
+
+            if (_relationElements[handleIdx - 2] is System.Windows.Shapes.Path path)
+            {
+                var geo = new System.Windows.Media.PathGeometry();
+                var fig = new System.Windows.Media.PathFigure { StartPoint = src };
+                fig.Segments.Add(new System.Windows.Media.QuadraticBezierSegment(new Point(midX, midY), tgt, true));
+                geo.Figures.Add(fig);
+                path.Data = geo;
+            }
+
+            if (_relationElements[handleIdx - 1] is System.Windows.Shapes.Polygon arrow)
+                UpdateArrowHead(arrow, midX, midY, tgt.X, tgt.Y);
+        }
+
+        private Point GetElementEdgePoint(string type, string refId, Point from)
+        {
+            foreach (var child in BoardCanvas.Children.OfType<Border>())
+            {
+                bool match = type switch
+                {
+                    "note" => child.Tag is NoteCard nc && string.Equals(nc.RelativePath, refId, StringComparison.OrdinalIgnoreCase),
+                    "title" => child.Tag is TitleCard tc && string.Equals(tc.Id, refId, StringComparison.OrdinalIgnoreCase),
+                    "image" => child.Tag is ImageCard ic && string.Equals(ic.Id, refId, StringComparison.OrdinalIgnoreCase),
+                    _ => false
+                };
+                if (!match) continue;
+
+                double l = Canvas.GetLeft(child);
+                double t = Canvas.GetTop(child);
+                double w = child.ActualWidth > 0 ? child.ActualWidth : 220;
+                double h = child.ActualHeight > 0 ? child.ActualHeight : 80;
+
+                double cx = l + w / 2;
+                double cy = t + h / 2;
+
+                double dx = cx - from.X;
+                double dy = cy - from.Y;
+                if (Math.Abs(dx) < 0.001 && Math.Abs(dy) < 0.001) return new Point(cx, cy);
+
+                // Oblicz przecięcie z każdą krawędzią prostokąta i weź najbliższe od from
+                double tMin = double.MaxValue;
+
+                // lewa: x = l
+                if (Math.Abs(dx) > 0.001) { double tl = (l - from.X) / dx; if (tl > 0) { double iy = from.Y + tl * dy; if (iy >= t && iy <= t + h) tMin = Math.Min(tMin, tl); } }
+                // prawa: x = l+w
+                if (Math.Abs(dx) > 0.001) { double tr = (l + w - from.X) / dx; if (tr > 0) { double iy = from.Y + tr * dy; if (iy >= t && iy <= t + h) tMin = Math.Min(tMin, tr); } }
+                // góra: y = t
+                if (Math.Abs(dy) > 0.001) { double tt = (t - from.Y) / dy; if (tt > 0) { double ix = from.X + tt * dx; if (ix >= l && ix <= l + w) tMin = Math.Min(tMin, tt); } }
+                // dół: y = t+h
+                if (Math.Abs(dy) > 0.001) { double tb = (t + h - from.Y) / dy; if (tb > 0) { double ix = from.X + tb * dx; if (ix >= l && ix <= l + w) tMin = Math.Min(tMin, tb); } }
+
+                if (tMin < double.MaxValue)
+                    return new Point(from.X + tMin * dx, from.Y + tMin * dy);
+
+                return new Point(cx, cy);
+            }
+            return new Point(0, 0);
         }
 
 
