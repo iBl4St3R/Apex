@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using Apex.Services;
 using Apex.Views;
@@ -39,7 +39,11 @@ namespace Apex
                 OpenProject(apexFilePath);
             };
 
-            startupWindow.ShowDialog();
+            bool? result = startupWindow.ShowDialog();
+
+            // Jeśli okno zamknięto bez wyboru projektu → zamknij aplikację
+            if (result != true)
+                Shutdown();
         }
 
         private void OpenProject(string apexFilePath)
@@ -57,6 +61,7 @@ namespace Apex
             }
 
             var mainWindow = new MainWindow(project);
+            mainWindow.Closed += (_, _) => Shutdown();   // ← dodaj tę linię
             mainWindow.Show();
         }
     }

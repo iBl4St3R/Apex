@@ -89,8 +89,7 @@ namespace Apex.Views
             }
 
             string templatesFolder = TemplateService.GetTemplatesFolder(_project.RootFolder);
-            bool isTemplate = _currentFilePath.StartsWith(
-                templatesFolder, StringComparison.OrdinalIgnoreCase);
+            bool isTemplate = _currentFilePath.StartsWith(templatesFolder, StringComparison.OrdinalIgnoreCase);
 
             if (!isTemplate)
             {
@@ -101,44 +100,27 @@ namespace Apex.Views
 
             TemplateBar.Visibility = Visibility.Visible;
 
-            // Load or create template meta
             string mdFileName = Path.GetFileName(_currentFilePath);
             _currentTemplate = TemplateService.LoadMeta(_project.RootFolder, mdFileName)
-                               ?? new NoteTemplate(
-                                   Path.GetFileNameWithoutExtension(mdFileName),
-                                   mdFileName);
+                               ?? new NoteTemplate(Path.GetFileNameWithoutExtension(mdFileName), mdFileName);
 
-            // Populate category dropdown
             _templateBarChanging = true;
             TemplateCategory.Items.Clear();
 
-
             var itemStyle = new Style(typeof(ComboBoxItem));
-            itemStyle.Setters.Add(new Setter(ComboBoxItem.BackgroundProperty,
-                new SolidColorBrush(Color.FromRgb(49, 50, 68))));
-            itemStyle.Setters.Add(new Setter(ComboBoxItem.ForegroundProperty,
-                new SolidColorBrush(Color.FromRgb(205, 214, 244))));
-            itemStyle.Setters.Add(new Setter(ComboBoxItem.PaddingProperty,
-                new Thickness(8, 4, 8, 4)));
+            itemStyle.Setters.Add(new Setter(ComboBoxItem.BackgroundProperty, new SolidColorBrush(Color.FromRgb(49, 50, 68))));
+            itemStyle.Setters.Add(new Setter(ComboBoxItem.ForegroundProperty, new SolidColorBrush(Color.FromRgb(205, 214, 244))));
+            itemStyle.Setters.Add(new Setter(ComboBoxItem.PaddingProperty, new Thickness(8, 4, 8, 4)));
 
-            var hoverTrigger = new Trigger
-            { Property = ComboBoxItem.IsMouseOverProperty, Value = true };
-            hoverTrigger.Setters.Add(new Setter(ComboBoxItem.BackgroundProperty,
-                new SolidColorBrush(Color.FromRgb(69, 71, 90))));
+            var hoverTrigger = new Trigger { Property = ComboBoxItem.IsMouseOverProperty, Value = true };
+            hoverTrigger.Setters.Add(new Setter(ComboBoxItem.BackgroundProperty, new SolidColorBrush(Color.FromRgb(69, 71, 90))));
             itemStyle.Triggers.Add(hoverTrigger);
 
-            var selectedTrigger = new Trigger
-            { Property = ComboBoxItem.IsSelectedProperty, Value = true };
-            selectedTrigger.Setters.Add(new Setter(ComboBoxItem.BackgroundProperty,
-                new SolidColorBrush(Color.FromRgb(88, 91, 112))));
+            var selectedTrigger = new Trigger { Property = ComboBoxItem.IsSelectedProperty, Value = true };
+            selectedTrigger.Setters.Add(new Setter(ComboBoxItem.BackgroundProperty, new SolidColorBrush(Color.FromRgb(88, 91, 112))));
             itemStyle.Triggers.Add(selectedTrigger);
 
-            var noneItem = new ComboBoxItem
-            {
-                Content = "(None)",
-                Tag = (string?)null,
-                Style = itemStyle
-            };
+            var noneItem = new ComboBoxItem { Content = "(None)", Tag = (string?)null, Style = itemStyle };
             TemplateCategory.Items.Add(noneItem);
 
             foreach (var cat in _project.Categories)
@@ -152,28 +134,18 @@ namespace Apex.Views
                 });
             }
 
-            TemplateCategory.Background =
-                new SolidColorBrush(Color.FromRgb(49, 50, 68));
-            TemplateCategory.Foreground =
-                new SolidColorBrush(Color.FromRgb(205, 214, 244));
-            TemplateCategory.Resources.Add(SystemColors.WindowBrushKey,
-                new SolidColorBrush(Color.FromRgb(49, 50, 68)));
-            TemplateCategory.Resources.Add(SystemColors.WindowTextBrushKey,
-                new SolidColorBrush(Color.FromRgb(205, 214, 244)));
-            TemplateCategory.Resources.Add(SystemColors.HighlightBrushKey,
-                new SolidColorBrush(Color.FromRgb(88, 91, 112)));
-            TemplateCategory.Resources.Add(SystemColors.HighlightTextBrushKey,
-                new SolidColorBrush(Color.FromRgb(205, 214, 244)));
+            TemplateCategory.Background = new SolidColorBrush(Color.FromRgb(49, 50, 68));
+            TemplateCategory.Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244));
 
-            // Select current
-            var selected = TemplateCategory.Items.OfType<ComboBoxItem>()
-                .FirstOrDefault(i => string.Equals(
-                    i.Tag as string,
-                    _currentTemplate.DefaultCategoryId,
-                    StringComparison.OrdinalIgnoreCase));
+            // ← KLUCZOWA ZMIANA: indekser [] zamiast .Add() — nie rzuca przy duplikatch
+            TemplateCategory.Resources[SystemColors.WindowBrushKey] = new SolidColorBrush(Color.FromRgb(49, 50, 68));
+            TemplateCategory.Resources[SystemColors.WindowTextBrushKey] = new SolidColorBrush(Color.FromRgb(205, 214, 244));
+            TemplateCategory.Resources[SystemColors.HighlightBrushKey] = new SolidColorBrush(Color.FromRgb(88, 91, 112));
+            TemplateCategory.Resources[SystemColors.HighlightTextBrushKey] = new SolidColorBrush(Color.FromRgb(205, 214, 244));
+
+            var selected = TemplateCategory.Items.OfType<ComboBoxItem>().FirstOrDefault(i => string.Equals(i.Tag as string, _currentTemplate.DefaultCategoryId, StringComparison.OrdinalIgnoreCase));
             TemplateCategory.SelectedItem = selected ?? TemplateCategory.Items[0];
 
-            // Folder
             TemplateFolderBox.Text = _currentTemplate.DefaultFolder;
             _templateBarChanging = false;
         }
