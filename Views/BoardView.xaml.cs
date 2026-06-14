@@ -511,17 +511,10 @@ namespace Apex.Views
             lockIcon.MouseLeftButtonUp += (_, e) =>
             {
                 card.Locked = !card.Locked;
-
-                Border? current = BoardCanvas.Children
-                    .OfType<Border>()
-                    .FirstOrDefault(b => b.Tag == card);
-
-                if (current != null)
-                    ReplaceCardElement(card, current);
-
-                if (Project != null)
-                    FileService.SaveProject(Project);
-
+                Border? current = BoardCanvas.Children.OfType<Border>().FirstOrDefault(b => b.Tag == card);
+                if (current != null) ReplaceCardElement(card, current);
+                if (Project != null) FileService.SaveProject(Project);
+                Dispatcher.BeginInvoke(new Action(RenderRelations), System.Windows.Threading.DispatcherPriority.Loaded);
                 e.Handled = true;
             };
 
@@ -1151,7 +1144,7 @@ namespace Apex.Views
                     Fill = new SolidColorBrush(ParseHexColor(rel.LineColor, 200)),
                     IsHitTestVisible = false
                 };
-                UpdateArrowHead(arrow, midX, midY, tgt.X, tgt.Y);
+                UpdateArrowHead(arrow, midX, midY, tgt.X, tgt.Y, rel.LineThickness);
 
                 BoardCanvas.Children.Insert(lineInsertIndex, path);
                 lineInsertIndex++;
@@ -1258,12 +1251,13 @@ namespace Apex.Views
 
         private System.Windows.Shapes.Ellipse BuildBendHandle(Relation rel, double cx, double cy)
         {
-            const double R = 10; // większy — łatwiejszy do złapania
+            const double R = 10;
+            var handleColor = ParseHexColor(rel.LineColor, 255);
             var handle = new System.Windows.Shapes.Ellipse
             {
                 Width = R * 2,
                 Height = R * 2,
-                Fill = new SolidColorBrush(Color.FromRgb(203, 166, 247)),
+                Fill = new SolidColorBrush(handleColor),
                 Stroke = new SolidColorBrush(Color.FromRgb(30, 30, 46)),
                 StrokeThickness = 2,
                 Cursor = Cursors.SizeAll,
@@ -1316,13 +1310,13 @@ namespace Apex.Views
             e.Handled = true;
         }
 
-        private static void UpdateArrowHead(System.Windows.Shapes.Polygon arrow,
-            double x1, double y1, double x2, double y2)
+        private static void UpdateArrowHead(System.Windows.Shapes.Polygon arrow, double x1, double y1, double x2, double y2, double thickness = 1.5)
         {
-            double angle = Math.Atan2(y2 - y1, x2 - x1);
-            double aLen = 11;
-            double aWidth = 5;
+            double scale = Math.Clamp(thickness / 1.5, 0.7, 3.0);
+            double aLen = 11 * scale;
+            double aWidth = 5 * scale;
 
+            double angle = Math.Atan2(y2 - y1, x2 - x1);
             double ax = x2 - aLen * Math.Cos(angle);
             double ay = y2 - aLen * Math.Sin(angle);
 
@@ -1428,7 +1422,7 @@ namespace Apex.Views
             }
 
             if (_relationElements[handleIdx - 1] is System.Windows.Shapes.Polygon arrow)
-                UpdateArrowHead(arrow, midX, midY, tgt.X, tgt.Y);
+                UpdateArrowHead(arrow, midX, midY, tgt.X, tgt.Y, rel.LineThickness);
         }
 
         private Point GetElementEdgePoint(string type, string refId, Point from)
@@ -2090,10 +2084,10 @@ namespace Apex.Views
             lockIcon.MouseLeftButtonUp += (_, e) =>
             {
                 imageCard.Locked = !imageCard.Locked;
-                var current = BoardCanvas.Children.OfType<Border>()
-                    .FirstOrDefault(b => b.Tag == imageCard);
+                var current = BoardCanvas.Children.OfType<Border>().FirstOrDefault(b => b.Tag == imageCard);
                 if (current != null) ReplaceImageCardElement(imageCard, current);
                 if (Project != null) FileService.SaveProject(Project);
+                Dispatcher.BeginInvoke(new Action(RenderRelations), System.Windows.Threading.DispatcherPriority.Loaded);
                 e.Handled = true;
             };
             bottomContent.Children.Add(lockIcon);
@@ -2190,10 +2184,10 @@ namespace Apex.Views
             lockIcon.MouseLeftButtonUp += (_, e) =>
             {
                 titleCard.Locked = !titleCard.Locked;
-                var current = BoardCanvas.Children.OfType<Border>()
-                    .FirstOrDefault(b => b.Tag == titleCard);
+                var current = BoardCanvas.Children.OfType<Border>().FirstOrDefault(b => b.Tag == titleCard);
                 if (current != null) ReplaceTitleCardElement(titleCard, current);
                 if (Project != null) FileService.SaveProject(Project);
+                Dispatcher.BeginInvoke(new Action(RenderRelations), System.Windows.Threading.DispatcherPriority.Loaded);
                 e.Handled = true;
             };
             grid.Children.Add(lockIcon);
