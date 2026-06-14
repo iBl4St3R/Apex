@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Media.Media3D;
 
 namespace Apex.Views
@@ -2327,14 +2328,36 @@ namespace Apex.Views
             deleteItem.Click += (_, _) =>
             {
                 var result = System.Windows.MessageBox.Show(
-                    "Remove this image from the board?\n(File will NOT be deleted from disk.)",
+                    "Remove this image from the board?\n(File will be moved to the Recycle Bin.)",
                     "Remove Image",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Question);
                 if (result == MessageBoxResult.Yes)
                 {
+                    string fullPath = Project != null
+                        ? FileService.GetFullPath(Project.RootFolder, imageCard.RelativePath)
+                        : string.Empty;
+
                     Project?.ImageCards.Remove(imageCard);
                     BoardCanvas.Children.Remove(cardElement);
+
+                    if (!string.IsNullOrEmpty(fullPath) && File.Exists(fullPath))
+                    {
+                        try
+                        {
+                            Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
+                                fullPath,
+                                Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                                Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Windows.MessageBox.Show(
+                                $"Image removed from board but file could not be deleted:\n{ex.Message}",
+                                "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        }
+                    }
+
                     if (Project != null) FileService.SaveProject(Project);
                 }
             };
@@ -2557,11 +2580,8 @@ namespace Apex.Views
             {
                 double vpw = CanvasContainer.ActualWidth;
                 double vph = CanvasContainer.ActualHeight;
-
-                // Viewport center → canvas coordinates
                 double canvasX = (vpw / 2 - PanTransform.X) / _zoomLevel;
                 double canvasY = (vph / 2 - PanTransform.Y) / _zoomLevel;
-
                 CreateNewNoteAt(new Point(canvasX, canvasY));
                 e.Handled = true;
             }
@@ -2570,7 +2590,14 @@ namespace Apex.Views
                 FitAllCards();
                 e.Handled = true;
             }
+            else if (e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                if (TryHandleClipboardImage())
+                    e.Handled = true;
+            }
         }
+
+
 
         // ──────────────────────────────────────────────
         //  Create new note
@@ -2684,30 +2711,7 @@ namespace Apex.Views
 
             if (dialog.ShowDialog() != true) return;
 
-            string sourcePath = dialog.FileName;
-            string imagesFolder = Path.Combine(Project.RootFolder, ".images");
-            if (!Directory.Exists(imagesFolder))
-                Directory.CreateDirectory(imagesFolder);
-
-            string fileName = Path.GetFileName(sourcePath);
-            string destPath = Path.Combine(imagesFolder, fileName);
-
-            // Jeśli plik już istnieje w .images — użyj go bez kopiowania
-            if (!File.Exists(destPath))
-                File.Copy(sourcePath, destPath);
-
-            string relativePath = ".images/" + fileName;
-            string id = Guid.NewGuid().ToString("N")[..8];
-
-            var imageCard = new ImageCard(id, relativePath, position.X, position.Y);
-            Project.ImageCards.Add(imageCard);
-
-            var element = CreateImageCardElement(imageCard);
-            Canvas.SetLeft(element, position.X);
-            Canvas.SetTop(element, position.Y);
-            BoardCanvas.Children.Add(element);
-
-            FileService.SaveProject(Project);
+            CreateNewImageFromFile(dialog.FileName, position);
         }
 
         private void CreateNewTitleAt(Point position)
@@ -2739,9 +2743,171 @@ namespace Apex.Views
             FileService.SaveProject(Project);
         }
 
+        private bool TryHandleClipboardImage()
+        {
+            if (Project == null) return false;
+
+            BitmapSource? bitmap = null;
+
+            // Priorytet 1: plik graficzny skopiowany z eksploratora (np. .png/.jpg)
+            if (Clipboard.ContainsFileDropList())
+            {
+                var files = Clipboard.GetFileDropList();
+                var imageExtensions = new[] { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" };
+                foreach (string? file in files)
+                {
+                    if (file == null) continue;
+                    if (imageExtensions.Contains(Path.GetExtension(file).ToLowerInvariant()) && File.Exists(file))
+                    {
+                        // Plik graficzny ze schowka — użyj ścieżki bezpośrednio
+                        Point dropPos = GetViewportCenterInCanvas();
+                        CreateNewImageFromFile(file, dropPos);
+                        return true;
+                    }
+                }
+            }
+
+            // Priorytet 2: obraz w schowku (screenshot, wycinka ekranu, kopiuj z przeglądarki)
+            if (Clipboard.ContainsImage())
+            {
+                bitmap = Clipboard.GetImage();
+                if (bitmap != null)
+                {
+                    Point dropPos = GetViewportCenterInCanvas();
+                    HandleImageDrop(bitmap, dropPos);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Wspólny punkt wejścia dla wrzucania obrazu z dowolnego źródła:
+        /// schowek (Ctrl+V), drag and drop (przyszłość), inne.
+        /// Zapisuje BitmapSource do pliku .png w .images/ i tworzy ImageCard na boardzie.
+        /// </summary>
+        public void HandleImageDrop(BitmapSource bitmap, Point canvasPosition)
+        {
+            if (Project == null) return;
+
+            try
+            {
+                string imagesFolder = Path.Combine(Project.RootFolder, ".images");
+                if (!Directory.Exists(imagesFolder))
+                    Directory.CreateDirectory(imagesFolder);
+
+                // Generuj unikalną nazwę pliku ze znacznikiem czasu
+                string fileName = $"paste_{DateTime.Now:yyyyMMdd_HHmmss}.png";
+                string destPath = Path.Combine(imagesFolder, fileName);
+
+                // Upewnij się że nazwa jest unikalna
+                int counter = 1;
+                while (File.Exists(destPath))
+                {
+                    fileName = $"paste_{DateTime.Now:yyyyMMdd_HHmmss}_{counter++}.png";
+                    destPath = Path.Combine(imagesFolder, fileName);
+                }
+
+                // Zapisz BitmapSource jako PNG
+                SaveBitmapToPng(bitmap, destPath);
+
+                string relativePath = ".images/" + fileName;
+                CreateImageCardOnBoard(relativePath, canvasPosition);
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Failed to paste image:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// Wspólny punkt wejścia dla wrzucania obrazu z pliku na dysku:
+        /// plik skopiowany w eksploratorze, drag and drop pliku (przyszłość).
+        /// Kopiuje plik do .images/ i tworzy ImageCard.
+        /// </summary>
+        public void CreateNewImageFromFile(string sourceFilePath, Point canvasPosition)
+        {
+            if (Project == null) return;
+
+            try
+            {
+                string imagesFolder = Path.Combine(Project.RootFolder, ".images");
+                if (!Directory.Exists(imagesFolder))
+                    Directory.CreateDirectory(imagesFolder);
+
+                string fileName = Path.GetFileName(sourceFilePath);
+                string destPath = Path.Combine(imagesFolder, fileName);
+
+                // Jeśli plik już jest w .images — użyj bez kopiowania
+                if (!string.Equals(sourceFilePath, destPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (File.Exists(destPath))
+                    {
+                        // Zmień nazwę żeby uniknąć kolizji
+                        string nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
+                        string ext = Path.GetExtension(fileName);
+                        int counter = 1;
+                        while (File.Exists(destPath))
+                        {
+                            fileName = $"{nameWithoutExt}_{counter++}{ext}";
+                            destPath = Path.Combine(imagesFolder, fileName);
+                        }
+                    }
+                    File.Copy(sourceFilePath, destPath);
+                }
+
+                string relativePath = ".images/" + fileName;
+                CreateImageCardOnBoard(relativePath, canvasPosition);
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Failed to add image:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+
+
+
         // ──────────────────────────────────────────────
         //  Utility
         // ──────────────────────────────────────────────
+
+        /// <summary>Tworzy ImageCard na boardzie dla podanej ścieżki względnej.</summary>
+        private void CreateImageCardOnBoard(string relativePath, Point canvasPosition)
+        {
+            if (Project == null) return;
+
+            string id = Guid.NewGuid().ToString("N")[..8];
+            var imageCard = new ImageCard(id, relativePath, canvasPosition.X, canvasPosition.Y);
+            Project.ImageCards.Add(imageCard);
+
+            var element = CreateImageCardElement(imageCard);
+            Canvas.SetLeft(element, canvasPosition.X);
+            Canvas.SetTop(element, canvasPosition.Y);
+            BoardCanvas.Children.Add(element);
+
+            FileService.SaveProject(Project);
+        }
+
+        /// <summary>Zwraca środek viewportu przeliczony na współrzędne kanwy.</summary>
+        private Point GetViewportCenterInCanvas()
+        {
+            double vpw = CanvasContainer.ActualWidth;
+            double vph = CanvasContainer.ActualHeight;
+            return new Point((vpw / 2 - PanTransform.X) / _zoomLevel, (vph / 2 - PanTransform.Y) / _zoomLevel);
+        }
+
+        /// <summary>Zapisuje BitmapSource do pliku PNG.</summary>
+        private static void SaveBitmapToPng(BitmapSource bitmap, string filePath)
+        {
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+            using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write);
+            encoder.Save(stream);
+        }
+
+
 
         public void FocusBoard()
         {
