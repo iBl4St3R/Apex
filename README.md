@@ -19,7 +19,7 @@ All notes are stored as `.md` files on disk — readable and editable by any tex
 
 Apex gives you two ways to look at your notes:
 
-- **Board view** — an infinite 2D canvas where each note is a draggable card. Pan, zoom, draw relations between cards, drop images, add title labels.
+- **Board view** — 2D canvas where each note is a draggable card. Pan, zoom, draw relations between cards, drop images, add title labels.
 - **Structure view** — a classic file tree showing your folders and `.md` files, with multi-select and a side-by-side reader/editor.
 
 Switch between views instantly. Both are always in sync.
