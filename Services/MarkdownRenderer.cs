@@ -327,16 +327,18 @@ public static class MarkdownRenderer
 
         if (highlighting == null)
         {
-            // Brak highlighting — zwróć plain text z podziałem na linie
             bool first = true;
             foreach (string line in code.Split('\n'))
             {
                 if (!first) result.Add(new LineBreak());
                 first = false;
-                result.Add(new Run(line) { Foreground = new SolidColorBrush(Color.FromRgb(186, 194, 222)) });
+                // TYMCZASOWO czerwony żeby zobaczyć czy tu wpadamy
+                result.Add(new Run(line) { Foreground = new SolidColorBrush(Color.FromRgb(255, 0, 0)) });
             }
             return result;
         }
+
+
 
         // Użyj AvalonEdit DocumentHighlighter do podkolorowania
         try
@@ -355,25 +357,39 @@ public static class MarkdownRenderer
 
                 if (highlightedLine.Sections.Count == 0)
                 {
-                    result.Add(new Run(lineText) { Foreground = new SolidColorBrush(Color.FromRgb(186, 194, 222)) });
+                    // TYMCZASOWO pomarańczowy żeby zobaczyć puste linie
+                    result.Add(new Run(lineText) { Foreground = new SolidColorBrush(Color.FromRgb(255, 165, 0)) });
                     continue;
                 }
 
+
+
+                int lineStartOffset = docLine.Offset;
                 int pos = 0;
                 foreach (var section in highlightedLine.Sections)
                 {
-                    // Tekst przed sekcją (bez formatowania)
-                    if (section.Offset > pos)
+                    // Przelicz offset sekcji na pozycję względem lineText
+                    int relativeOffset = section.Offset - lineStartOffset;
+                    int relativeEnd = relativeOffset + section.Length;
+
+                    // Clamp do granic linii
+                    relativeOffset = Math.Max(0, Math.Min(relativeOffset, lineText.Length));
+                    relativeEnd = Math.Max(0, Math.Min(relativeEnd, lineText.Length));
+
+                    if (relativeEnd <= relativeOffset) { pos = relativeEnd; continue; }
+
+                    // Tekst przed sekcją
+                    if (relativeOffset > pos)
                     {
-                        string plain = lineText[pos..section.Offset];
-                        result.Add(new Run(plain) { Foreground = new SolidColorBrush(Color.FromRgb(186, 194, 222)) });
+                        string plain = lineText[pos..relativeOffset];
+                        if (!string.IsNullOrEmpty(plain))
+                            result.Add(new Run(plain) { Foreground = new SolidColorBrush(Color.FromRgb(186, 194, 222)) });
                     }
 
                     // Tekst sekcji z kolorem
-                    int end = Math.Min(section.Offset + section.Length, lineText.Length);
-                    if (section.Offset < end)
+                    string sectionText = lineText[relativeOffset..relativeEnd];
+                    if (!string.IsNullOrEmpty(sectionText))
                     {
-                        string sectionText = lineText[section.Offset..end];
                         var run = new Run(sectionText);
                         run.Foreground = ConvertAvalonColor(section.Color);
                         if (section.Color.FontWeight.HasValue)
@@ -383,7 +399,7 @@ public static class MarkdownRenderer
                         result.Add(run);
                     }
 
-                    pos = section.Offset + section.Length;
+                    pos = relativeEnd;
                 }
 
                 // Tekst po ostatniej sekcji
@@ -391,17 +407,14 @@ public static class MarkdownRenderer
                     result.Add(new Run(lineText[pos..]) { Foreground = new SolidColorBrush(Color.FromRgb(186, 194, 222)) });
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Fallback jeśli highlighting się wysypie
             result.Clear();
-            bool first = true;
-            foreach (string line in code.Split('\n'))
+            result.Add(new Run($"HIGHLIGHT ERROR: {ex.GetType().Name}: {ex.Message}")
             {
-                if (!first) result.Add(new LineBreak());
-                first = false;
-                result.Add(new Run(line) { Foreground = new SolidColorBrush(Color.FromRgb(186, 194, 222)) });
-            }
+                Foreground = new SolidColorBrush(Color.FromRgb(255, 0, 0))
+            });
+            return result;
         }
 
         return result;
@@ -509,34 +522,53 @@ public static class MarkdownRenderer
 
         var c = scb.Color;
 
-        // AvalonEdit domyślne kolory są na jasne tło — remapuj na Catppuccin Mocha
-        // Sprawdzamy przybliżone kolory bo AvalonEdit nie daje nazw tokenów
+        // AvalonEdit domyślne definicje używają konkretnych kolorów — mapujemy je na Catppuccin Mocha
 
-        // Ciemny niebieski → słowa kluczowe — mapuj na jasny niebieski/lawendowy
-        if (c.R < 80 && c.G < 80 && c.B > 100)
-            return new SolidColorBrush(Color.FromRgb(203, 166, 247)); // purple — keywords
+        // #0000FF / ciemny niebieski — keywords (using, namespace, public, class, if, for, return...)
+        if (c.R == 0 && c.G == 0 && c.B == 255)
+            return new SolidColorBrush(Color.FromRgb(203, 166, 247)); // mauve/purple
 
-        // Ciemna zieleń → komentarze — mapuj na szary-zielony
-        if (c.R < 80 && c.G > 80 && c.B < 80)
-            return new SolidColorBrush(Color.FromRgb(108, 112, 134)); // gray — comments
+        // #008000 / ciemna zieleń — komentarze
+        if (c.R == 0 && c.G == 128 && c.B == 0)
+            return new SolidColorBrush(Color.FromRgb(108, 112, 134)); // overlay0 — muted
 
-        // Ciemna czerwień/brąz → stringi — mapuj na zielony
-        if (c.R > 100 && c.G < 60 && c.B < 60)
+        // #808080 / szary — różne tokeny
+        if (c.R == 128 && c.G == 128 && c.B == 128)
+            return new SolidColorBrush(Color.FromRgb(147, 153, 178)); // subtext0
+
+        // #A31515 / ciemnoczerwony — stringi
+        if (c.R == 163 && c.G == 21 && c.B == 21)
             return new SolidColorBrush(Color.FromRgb(166, 227, 161)); // green — strings
 
-        // Ciemny teal/morski → typy — mapuj na niebieski
-        if (c.R < 80 && c.G > 80 && c.B > 80)
+        // #FF0000 / czerwony — błędy/wartości specjalne
+        if (c.R == 255 && c.G == 0 && c.B == 0)
+            return new SolidColorBrush(Color.FromRgb(243, 139, 168)); // red/pink
+
+        // #2B91AF / niebieskozielony (C# types/interfaces)
+        if (c.R == 43 && c.G == 145 && c.B == 175)
             return new SolidColorBrush(Color.FromRgb(137, 180, 250)); // blue — types
 
-        // Ciemny fiolet → mapuj na różowy
-        if (c.R > 80 && c.G < 60 && c.B > 80)
-            return new SolidColorBrush(Color.FromRgb(243, 139, 168)); // pink — special
+        // #800080 / fioletowy — XML/HTML atrybuty
+        if (c.R == 128 && c.G == 0 && c.B == 128)
+            return new SolidColorBrush(Color.FromRgb(203, 166, 247)); // mauve
 
-        // Kolor który jest jasny (>180 każdy kanał) — zostaw prawie bez zmian, tylko rozjaśnij lekko
-        if (c.R > 180 && c.G > 180 && c.B > 180)
-            return new SolidColorBrush(Color.FromRgb(205, 214, 244)); // default text
+        // #FF8000 / pomarańczowy — liczby, wartości
+        if (c.R == 255 && c.G == 128 && c.B == 0)
+            return new SolidColorBrush(Color.FromRgb(250, 179, 135)); // peach — numbers
 
-        // Wszystko inne — zwróć domyślny kolor tekstu
+        // #000080 / granatowy — namespace names
+        if (c.R == 0 && c.G == 0 && c.B == 128)
+            return new SolidColorBrush(Color.FromRgb(137, 180, 250)); // blue
+
+        // #008080 / teal — JSON keys, XML tags
+        if (c.R == 0 && c.G == 128 && c.B == 128)
+            return new SolidColorBrush(Color.FromRgb(137, 220, 235)); // sky
+
+        // #E6E6FA / bardzo jasny fiolet (lavender) — zostaw jasny
+        if (c.R > 200 && c.G > 200 && c.B > 200)
+            return new SolidColorBrush(Color.FromRgb(205, 214, 244));
+
+        // Fallback — domyślny tekst
         return new SolidColorBrush(Color.FromRgb(205, 214, 244));
     }
 
