@@ -9,6 +9,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>Apex</AssemblyName>
     <RootNamespace>Apex</RootNamespace>
+	<ApplicationIcon>Assets\favicon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,6 +29,11 @@
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
   </ItemGroup>
+  
+  <ItemGroup>
+    <Resource Include="Assets\ApexLOGO.png"/>
+    <Resource Include="Assets\favicon.ico"/>
+</ItemGroup>
 
   <ItemGroup>
     <Folder Include="Assets\" />

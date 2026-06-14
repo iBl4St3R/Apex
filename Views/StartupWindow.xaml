@@ -1,4 +1,4 @@
-<Window x:Class="Apex.Views.StartupWindow"
+﻿<Window x:Class="Apex.Views.StartupWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -98,15 +98,20 @@
 
         <!-- App Branding -->
         <StackPanel Grid.Row="0" Margin="0,0,0,32">
-            <TextBlock FontSize="36"
-                       FontWeight="Bold"
-                       Foreground="#CBA6F7">
-                <Run Text="APEX" />
-            </TextBlock>
+            <Image Source="/Assets/ApexLOGO.png"
+                   Height="60"
+                   HorizontalAlignment="Center"
+                   RenderOptions.BitmapScalingMode="HighQuality"/>
             <TextBlock Text="Project Notes Manager"
                        FontSize="14"
                        Foreground="#A6ADC8"
-                       Margin="0,4,0,0" />
+                       HorizontalAlignment="Center"
+                       Margin="0,8,0,0" />
+            <TextBlock Text="v 0.1.0 BETA"
+           FontSize="8"
+           Foreground="#4A4A78"
+           HorizontalAlignment="Center"
+           Margin="0,1,0,0" />
         </StackPanel>
 
         <!-- Action Buttons -->

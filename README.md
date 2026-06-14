@@ -5,6 +5,10 @@
 ![.NET](https://img.shields.io/badge/.NET-8.0-purple)
 ![Framework](https://img.shields.io/badge/UI-WPF-orange)
 
+
+<p align="center">
+  <img src="logo.png" width="400" alt="Apex">
+</p>
 A standalone desktop application for managing project notes as plain Markdown files. Built for solo developers who want a visual, board-based overview of their notes without locking data into a proprietary format.
 
 All notes are stored as `.md` files on disk — readable and editable by any text editor, version-control friendly, yours forever.

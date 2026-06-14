@@ -1,10 +1,12 @@
-﻿using System.IO;
+﻿using Apex.Models;
+using Apex.Services;
+using Apex.Views;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-using Apex.Models;
-using Apex.Services;
-using Apex.Views;
+using System.Windows.Shell;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.Window;
 
 namespace Apex
 {
@@ -70,8 +72,16 @@ namespace Apex
                 : ViewMode.Board;
 
             SetViewMode(initialMode);
+
+            WindowChrome.SetWindowChrome(this, new WindowChrome
+            {
+                CaptionHeight = 44,
+                ResizeBorderThickness = new Thickness(4),
+                GlassFrameThickness = new Thickness(0),
+                CornerRadius = new CornerRadius(0)
+            });
         }
-        
+
 
         /// <summary>
         /// Switches the left panel between Board and Structure view.
@@ -444,6 +454,47 @@ namespace Apex
             _noteViewer.EnterEditMode();
         }
 
+        private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+        private void MaxRestoreButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (WindowState == WindowState.Maximized)
+            {
+                WindowState = WindowState.Normal;
+                MaxRestoreButton.Content = "□";
+            }
+            else
+            {
+                WindowState = WindowState.Maximized;
+                MaxRestoreButton.Content = "❐";
+            }
+        }
+
+        private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (e.ClickCount == 2)
+            {
+                // Podwójne kliknięcie = maximize/restore
+                if (WindowState == WindowState.Maximized)
+                {
+                    WindowState = WindowState.Normal;
+                    MaxRestoreButton.Content = "□";
+                }
+                else
+                {
+                    WindowState = WindowState.Maximized;
+                    MaxRestoreButton.Content = "❐";
+                }
+            }
+            else
+            {
+                DragMove();
+            }
+        }
+
+        private void CloseButton_Click(object sender, RoutedEventArgs e)
+            => Close();
+
         private void SearchBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
             if (e.Key == System.Windows.Input.Key.Escape)
@@ -500,6 +551,68 @@ namespace Apex
                 if (!SearchBox.IsFocused)
                     CloseSearch();
             }), System.Windows.Threading.DispatcherPriority.Input);
+        }
+
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            var helper = new System.Windows.Interop.WindowInteropHelper(this);
+            var source = System.Windows.Interop.HwndSource.FromHwnd(helper.Handle);
+            source?.AddHook(WndProc);
+        }
+
+        private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            const int WM_GETMINMAXINFO = 0x0024;
+            if (msg == WM_GETMINMAXINFO)
+            {
+                WmGetMinMaxInfo(hwnd, lParam);
+                handled = true;
+            }
+            return IntPtr.Zero;
+        }
+
+        private static void WmGetMinMaxInfo(IntPtr hwnd, IntPtr lParam)
+        {
+            var mmi = System.Runtime.InteropServices.Marshal.PtrToStructure<MINMAXINFO>(lParam);
+
+            var screen = System.Windows.Forms.Screen.FromHandle(hwnd);
+            var wa = screen.WorkingArea;
+            var ma = screen.Bounds;
+
+            mmi.ptMaxPosition.x = wa.Left - ma.Left;
+            mmi.ptMaxPosition.y = wa.Top - ma.Top;
+            mmi.ptMaxSize.x = wa.Width;
+            mmi.ptMaxSize.y = wa.Height;
+            mmi.ptMaxTrackSize.x = wa.Width;
+            mmi.ptMaxTrackSize.y = wa.Height;
+
+            System.Runtime.InteropServices.Marshal.StructureToPtr(mmi, lParam, true);
+        }
+
+        [System.Runtime.InteropServices.StructLayout(
+            System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct POINT { public int x; public int y; }
+
+        [System.Runtime.InteropServices.StructLayout(
+            System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct MINMAXINFO
+        {
+            public POINT ptReserved;
+            public POINT ptMaxSize;
+            public POINT ptMaxPosition;
+            public POINT ptMinTrackSize;
+            public POINT ptMaxTrackSize;
+        }
+
+        protected override void OnStateChanged(EventArgs e)
+        {
+            base.OnStateChanged(e);
+
+            if (WindowState == WindowState.Maximized)
+                MaxRestoreButton.Content = "❐";
+            else if (WindowState == WindowState.Normal)
+                MaxRestoreButton.Content = "□";
         }
 
         private class SearchResult
