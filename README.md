@@ -6,6 +6,9 @@
 ![Framework](https://img.shields.io/badge/UI-WPF-orange)
 
 
+<div align="center" style="color: red; font-weight: bold; font-size: 1.2em; margin-bottom: 20px;">
+  ⚠️ WORK IN PROGRESS ⚠️
+</div>
 <p align="center">
   <img src="logo.png" width="400" alt="Apex">
 </p>
