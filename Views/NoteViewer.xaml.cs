@@ -1,13 +1,14 @@
-﻿using System;
+﻿using Apex.Models;
+using Apex.Services;
+using System;
 using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
-using Apex.Models;
-using Apex.Services;
 
 namespace Apex.Views
 {
@@ -29,6 +30,7 @@ namespace Apex.Views
         public NoteViewer()
         {
             InitializeComponent();
+            BuildMdToolbar();
         }
 
         // ──────────────────────────────────────────────
@@ -177,6 +179,8 @@ namespace Apex.Views
             WikiLinkPopup.Visibility = Visibility.Collapsed;
 
             ReadContent.Focus();
+
+            MdToolbar.Visibility = Visibility.Collapsed;
         }
 
         private void SwitchToEditMode()
@@ -194,6 +198,8 @@ namespace Apex.Views
 
             EditContent.TextChanged += EditContent_WikiTextChanged;
             EditContent.PreviewKeyDown += EditContent_WikiKeyDown;
+
+            MdToolbar.Visibility = Visibility.Visible;
         }
 
         // ──────────────────────────────────────────────
@@ -538,6 +544,306 @@ namespace Apex.Views
 
         private void KeepMineButton_Click(object sender, RoutedEventArgs e)
             => ExternalChangeBanner.Visibility = Visibility.Collapsed;
+
+        private void BuildMdToolbar()
+        {
+            MdToolbarPanel.Children.Clear();
+
+            // ── Nagłówki ──
+            AddToolbarGroup("HEADINGS", new[]
+            {
+        MakeToolBtn("H1", "Heading 1", () => InsertLinePrefix("# ")),
+        MakeToolBtn("H2", "Heading 2", () => InsertLinePrefix("## ")),
+        MakeToolBtn("H3", "Heading 3", () => InsertLinePrefix("### ")),
+        MakeToolBtn("H4", "Heading 4", () => InsertLinePrefix("#### ")),
+    });
+
+            AddToolbarSeparator();
+
+            // ── Inline formatting ──
+            AddToolbarGroup("FORMAT", new[]
+            {
+        MakeToolBtn("B", "Bold", () => WrapSelection("**", "**"), bold: true),
+        MakeToolBtn("I", "Italic", () => WrapSelection("*", "*"), italic: true),
+        MakeToolBtn("~~", "Strikethrough", () => WrapSelection("~~", "~~")),
+        MakeToolBtn("`", "Inline code", () => WrapSelection("`", "`")),
+    });
+
+            AddToolbarSeparator();
+
+            // ── Bloki ──
+            AddToolbarGroup("BLOCKS", new[]
+            {
+        MakeToolBtn("{ }", "Code block", () => InsertBlock("```\n", "\n```")),
+        MakeToolBtn("❝", "Blockquote", () => InsertLinePrefix("> ")),
+        MakeToolBtn("─", "Horizontal rule", () => InsertRaw("\n---\n")),
+    });
+
+            AddToolbarSeparator();
+
+            // ── Listy ──
+            AddToolbarGroup("LISTS", new[]
+            {
+        MakeToolBtn("• —", "Bullet list", () => InsertLinePrefix("- ")),
+        MakeToolBtn("1.", "Numbered list", () => InsertLinePrefix("1. ")),
+        MakeToolBtn("☐", "Task item", () => InsertLinePrefix("- [ ] ")),
+    });
+
+            AddToolbarSeparator();
+
+            // ── Linki i media ──
+            AddToolbarGroup("INSERT", new[]
+            {
+        MakeToolBtn("🔗", "Link", () => InsertLink()),
+        MakeToolBtn("🖼", "Image (MD)", () => InsertImageMd()),
+        MakeToolBtn("⊞ img", "Image centered (HTML)", () => InsertImageHtml()),
+        MakeToolBtn("[[", "Wiki-link", () => WrapSelection("[[", "]]")),
+    });
+
+            AddToolbarSeparator();
+
+            // ── Tabela ──
+            AddToolbarGroup("TABLE", new[]
+            {
+        MakeToolBtn("⊞ 2×2", "Table 2 columns", () => InsertTable(2, 3)),
+        MakeToolBtn("⊞ 3×3", "Table 3 columns", () => InsertTable(3, 3)),
+    });
+        }
+
+        // ── Helpers do budowania UI ──────────────────────────────────────
+
+        private void AddToolbarGroup(string label, Button[] buttons)
+        {
+            var group = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 4, 0) };
+
+            var lbl = new TextBlock
+            {
+                Text = label,
+                FontSize = 9,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromRgb(88, 91, 112)),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(4, 0, 4, 0)
+            };
+            group.Children.Add(lbl);
+
+            foreach (var btn in buttons)
+                group.Children.Add(btn);
+
+            MdToolbarPanel.Children.Add(group);
+        }
+
+        private void AddToolbarSeparator()
+        {
+            MdToolbarPanel.Children.Add(new Border
+            {
+                Width = 1,
+                Background = new SolidColorBrush(Color.FromRgb(49, 50, 68)),
+                Margin = new Thickness(4, 2, 4, 2),
+                VerticalAlignment = VerticalAlignment.Stretch
+            });
+        }
+
+        private static Button MakeToolBtn(string content, string tooltip, Action action, bool bold = false, bool italic = false)
+        {
+            var btn = new Button
+            {
+                Content = content,
+                ToolTip = tooltip,
+                MinWidth = 28,
+                Height = 24,
+                Padding = new Thickness(6, 0, 6, 0),
+                Margin = new Thickness(1, 0, 1, 0),
+                FontSize = 11,
+                FontWeight = bold ? FontWeights.Bold : FontWeights.Normal,
+                FontStyle = italic ? FontStyles.Italic : FontStyles.Normal,
+                Background = new SolidColorBrush(Color.FromRgb(49, 50, 68)),
+                Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244)),
+                BorderThickness = new Thickness(1),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(69, 71, 90)),
+                Cursor = Cursors.Hand
+            };
+
+            // Hover effect
+            btn.MouseEnter += (_, _) => btn.Background = new SolidColorBrush(Color.FromRgb(69, 71, 90));
+            btn.MouseLeave += (_, _) => btn.Background = new SolidColorBrush(Color.FromRgb(49, 50, 68));
+
+            btn.Click += (_, _) => action();
+            return btn;
+        }
+
+        // ── Operacje na tekście ──────────────────────────────────────────
+
+        /// <summary>Owija zaznaczenie w prefix+suffix. Jeśli brak zaznaczenia — wstawia placeholder.</summary>
+        private void WrapSelection(string prefix, string suffix, string placeholder = "text")
+        {
+            int selStart = EditContent.SelectionStart;
+            int selLen = EditContent.SelectionLength;
+            string selected = selLen > 0 ? EditContent.SelectedText : placeholder;
+
+            string replacement = prefix + selected + suffix;
+            int caretAfter = selStart + prefix.Length + selected.Length + suffix.Length;
+
+            EditContent.Text = EditContent.Text[..selStart] + replacement + EditContent.Text[(selStart + selLen)..];
+
+            // Zaznacz wstawiony tekst (bez prefix/suffix) jeśli był placeholder
+            if (selLen == 0)
+            {
+                EditContent.SelectionStart = selStart + prefix.Length;
+                EditContent.SelectionLength = placeholder.Length;
+            }
+            else
+            {
+                EditContent.CaretIndex = caretAfter;
+            }
+
+            EditContent.Focus();
+        }
+
+        /// <summary>Dodaje prefix na początku każdej zaznaczonej linii (lub bieżącej).</summary>
+        private void InsertLinePrefix(string prefix)
+        {
+            int selStart = EditContent.SelectionStart;
+            int selEnd = selStart + EditContent.SelectionLength;
+            string text = EditContent.Text;
+
+            // Znajdź początek pierwszej zaznaczonej linii
+            int lineStart = selStart;
+            while (lineStart > 0 && text[lineStart - 1] != '\n')
+                lineStart--;
+
+            // Znajdź koniec ostatniej zaznaczonej linii
+            int lineEnd = selEnd;
+            while (lineEnd < text.Length && text[lineEnd] != '\n')
+                lineEnd++;
+
+            string block = text[lineStart..lineEnd];
+            var lines = block.Split('\n');
+            var modified = lines.Select(l => prefix + l);
+            string replacement = string.Join("\n", modified);
+
+            EditContent.Text = text[..lineStart] + replacement + text[lineEnd..];
+            EditContent.CaretIndex = lineStart + replacement.Length;
+            EditContent.Focus();
+        }
+
+        /// <summary>Wstawia blok przed i po zaznaczeniu (np. code block).</summary>
+        private void InsertBlock(string before, string after, string placeholder = "code")
+        {
+            int selStart = EditContent.SelectionStart;
+            int selLen = EditContent.SelectionLength;
+            string selected = selLen > 0 ? EditContent.SelectedText : placeholder;
+
+            string replacement = before + selected + after;
+            EditContent.Text = EditContent.Text[..selStart] + replacement + EditContent.Text[(selStart + selLen)..];
+
+            if (selLen == 0)
+            {
+                EditContent.SelectionStart = selStart + before.Length;
+                EditContent.SelectionLength = placeholder.Length;
+            }
+            else
+            {
+                EditContent.CaretIndex = selStart + replacement.Length;
+            }
+
+            EditContent.Focus();
+        }
+
+        /// <summary>Wstawia surowy tekst w miejscu karetki.</summary>
+        private void InsertRaw(string text)
+        {
+            int caret = EditContent.SelectionStart;
+            int selLen = EditContent.SelectionLength;
+            EditContent.Text = EditContent.Text[..caret] + text + EditContent.Text[(caret + selLen)..];
+            EditContent.CaretIndex = caret + text.Length;
+            EditContent.Focus();
+        }
+
+        /// <summary>Wstawia link MD — jeśli zaznaczono tekst, używa go jako label.</summary>
+        private void InsertLink()
+        {
+            int selStart = EditContent.SelectionStart;
+            int selLen = EditContent.SelectionLength;
+            string label = selLen > 0 ? EditContent.SelectedText : "link text";
+            string snippet = $"[{label}](url)";
+
+            EditContent.Text = EditContent.Text[..selStart] + snippet + EditContent.Text[(selStart + selLen)..];
+
+            // Zaznacz "url" żeby użytkownik mógł od razu wpisać
+            int urlStart = selStart + label.Length + 3; // [label](  ← 3 znaki
+            EditContent.SelectionStart = urlStart;
+            EditContent.SelectionLength = 3; // "url"
+            EditContent.Focus();
+        }
+
+        /// <summary>Wstawia obrazek MD inline.</summary>
+        private void InsertImageMd()
+        {
+            int caret = EditContent.SelectionStart;
+            int selLen = EditContent.SelectionLength;
+            string snippet = "![alt text](filename.png)";
+            EditContent.Text = EditContent.Text[..caret] + snippet + EditContent.Text[(caret + selLen)..];
+
+            // Zaznacz "filename.png"
+            EditContent.SelectionStart = caret + 13; // ![alt text](  ← 13 znaków
+            EditContent.SelectionLength = 12;         // "filename.png"
+            EditContent.Focus();
+        }
+
+        /// <summary>Wstawia obrazek HTML z wyrównaniem do środka.</summary>
+        private void InsertImageHtml()
+        {
+            int caret = EditContent.SelectionStart;
+            int selLen = EditContent.SelectionLength;
+            string snippet = "<p align=\"center\">\n  <img src=\"filename.png\" width=\"400\" alt=\"\">\n</p>";
+            EditContent.Text = EditContent.Text[..caret] + "\n" + snippet + "\n" + EditContent.Text[(caret + selLen)..];
+
+            // Zaznacz "filename.png"
+            int fnStart = caret + 1 + 19 + 11; // \n + <p align="center">\n  <img src="  ← count
+                                               // Prostsze — znajdź "filename.png" w wstawionym tekście
+            int snippetStart = caret + 1;
+            int fnIdx = snippet.IndexOf("filename.png", StringComparison.Ordinal);
+            EditContent.SelectionStart = snippetStart + fnIdx;
+            EditContent.SelectionLength = 12;
+            EditContent.Focus();
+        }
+
+        /// <summary>Wstawia tabelę MD z podaną liczbą kolumn i wierszy.</summary>
+        private void InsertTable(int cols, int rows)
+        {
+            int caret = EditContent.SelectionStart;
+            int selLen = EditContent.SelectionLength;
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine();
+
+            // Header
+            sb.Append('|');
+            for (int c = 0; c < cols; c++)
+                sb.Append($" Header {c + 1} |");
+            sb.AppendLine();
+
+            // Separator
+            sb.Append('|');
+            for (int c = 0; c < cols; c++)
+                sb.Append(" --- |");
+            sb.AppendLine();
+
+            // Rows
+            for (int r = 0; r < rows - 1; r++)
+            {
+                sb.Append('|');
+                for (int c = 0; c < cols; c++)
+                    sb.Append(" Cell |");
+                sb.AppendLine();
+            }
+
+            string snippet = sb.ToString();
+            EditContent.Text = EditContent.Text[..caret] + snippet + EditContent.Text[(caret + selLen)..];
+            EditContent.CaretIndex = caret + snippet.Length;
+            EditContent.Focus();
+        }
 
         // ──────────────────────────────────────────────
         //  Keyboard shortcuts

@@ -14,71 +14,28 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <!-- banner -->
             <RowDefinition Height="Auto" />
-            <!-- toolbar -->
             <RowDefinition Height="*" />
-            <!-- content -->
             <RowDefinition Height="Auto" />
-            <!-- template bar -->
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- ════════════════════════════════════════
-             EXTERNAL CHANGE BANNER
-             ════════════════════════════════════════ -->
-        <Border x:Name="ExternalChangeBanner"
-                Grid.Row="0"
-                Background="#F9E2AF"
-                Padding="12,6"
-                Visibility="Collapsed">
+        <!-- Row 0: EXTERNAL CHANGE BANNER -->
+        <Border x:Name="ExternalChangeBanner" Grid.Row="0" Background="#F9E2AF" Padding="12,6" Visibility="Collapsed">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-
-                <TextBlock Grid.Column="0"
-                           Text="This file was modified externally."
-                           FontSize="12"
-                           FontWeight="SemiBold"
-                           Foreground="#1E1E2E"
-                           VerticalAlignment="Center" />
-
-                <Button Grid.Column="1"
-                        x:Name="LoadExternalButton"
-                        Content="Load external"
-                        FontSize="11"
-                        Padding="8,2"
-                        Margin="8,0,4,0"
-                        Cursor="Hand"
-                        Background="#45475A"
-                        Foreground="#CDD6F4"
-                        BorderThickness="0"
-                        Click="LoadExternalButton_Click" />
-
-                <Button Grid.Column="2"
-                        x:Name="KeepMineButton"
-                        Content="Keep mine"
-                        FontSize="11"
-                        Padding="8,2"
-                        Cursor="Hand"
-                        Background="#45475A"
-                        Foreground="#CDD6F4"
-                        BorderThickness="0"
-                        Click="KeepMineButton_Click" />
+                <TextBlock Grid.Column="0" Text="This file was modified externally." FontSize="12" FontWeight="SemiBold" Foreground="#1E1E2E" VerticalAlignment="Center" />
+                <Button Grid.Column="1" x:Name="LoadExternalButton" Content="Load external" FontSize="11" Padding="8,2" Margin="8,0,4,0" Cursor="Hand" Background="#45475A" Foreground="#CDD6F4" BorderThickness="0" Click="LoadExternalButton_Click" />
+                <Button Grid.Column="2" x:Name="KeepMineButton" Content="Keep mine" FontSize="11" Padding="8,2" Cursor="Hand" Background="#45475A" Foreground="#CDD6F4" BorderThickness="0" Click="KeepMineButton_Click" />
             </Grid>
         </Border>
 
-        <!-- ════════════════════════════════════════
-             TOOLBAR — READ MODE
-             ════════════════════════════════════════ -->
-        <Border x:Name="ReadToolbar"
-                Grid.Row="1"
-                Background="#181825"
-                BorderBrush="#313244"
-                BorderThickness="0,0,0,1"
-                Padding="12,6">
+        <!-- Row 1: TOOLBAR READ MODE -->
+        <Border x:Name="ReadToolbar" Grid.Row="1" Background="#181825" BorderBrush="#313244" BorderThickness="0,0,0,1" Padding="12,6">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -87,208 +44,35 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-
-                <!-- Title -->
-                <TextBlock x:Name="NoteTitle"
-                           Grid.Column="0"
-                           FontSize="16"
-                           FontWeight="Bold"
-                           Foreground="#CDD6F4"
-                           VerticalAlignment="Center" />
-
-                <!-- Spacer -->
+                <TextBlock x:Name="NoteTitle" Grid.Column="0" FontSize="16" FontWeight="Bold" Foreground="#CDD6F4" VerticalAlignment="Center" />
                 <Rectangle Grid.Column="1" Fill="Transparent" />
-
-                <!-- Category badge -->
-                <Border x:Name="CategoryBadge"
-                        Grid.Column="2"
-                        CornerRadius="3"
-                        Padding="6,2"
-                        Margin="0,0,8,0"
-                        Visibility="Collapsed"
-                        VerticalAlignment="Center">
-                    <TextBlock x:Name="CategoryNameText"
-                               FontSize="11"
-                               FontWeight="SemiBold"
-                               Foreground="White" />
+                <Border x:Name="CategoryBadge" Grid.Column="2" CornerRadius="3" Padding="6,2" Margin="0,0,8,0" Visibility="Collapsed" VerticalAlignment="Center">
+                    <TextBlock x:Name="CategoryNameText" FontSize="11" FontWeight="SemiBold" Foreground="White" />
                 </Border>
-
-                <!-- Dates -->
-                <TextBlock Grid.Column="3"
-                           FontSize="11"
-                           Foreground="#6C7086"
-                           VerticalAlignment="Center"
-                           Margin="0,0,12,0">
-                    <Run Text="Created:" />
-                    <Run x:Name="CreationDateText" Text="—" />
-                    <Run Text="  " />
-                    <Run Text="Modified:" />
-                    <Run x:Name="ModifiedDateText" Text="—" />
+                <TextBlock Grid.Column="3" FontSize="11" Foreground="#6C7086" VerticalAlignment="Center" Margin="0,0,12,0">
+                    <Run Text="Created:" /><Run x:Name="CreationDateText" Text="—" /><Run Text="  " /><Run Text="Modified:" /><Run x:Name="ModifiedDateText" Text="—" />
                 </TextBlock>
-
-                <!-- Edit button -->
-                <Button x:Name="EditButton"
-                        Grid.Column="4"
-                        Content="Edit"
-                        FontSize="12"
-                        FontWeight="SemiBold"
-                        Padding="10,4"
-                        MinWidth="60"
-                        Cursor="Hand"
-                        Background="#313244"
-                        Foreground="#CDD6F4"
-                        BorderThickness="1"
-                        BorderBrush="#45475A"
-                        Click="EditButton_Click" />
+                <Button x:Name="EditButton" Grid.Column="4" Content="Edit" FontSize="12" FontWeight="SemiBold" Padding="10,4" MinWidth="60" Cursor="Hand" Background="#313244" Foreground="#CDD6F4" BorderThickness="1" BorderBrush="#45475A" Click="EditButton_Click" />
             </Grid>
         </Border>
 
-        <!-- ════════════════════════════════════════
-             TOOLBAR — EDIT MODE
-             ════════════════════════════════════════ -->
-        <Border x:Name="EditToolbar"
-                Grid.Row="1"
-                Background="#181825"
-                BorderBrush="#313244"
-                BorderThickness="0,0,0,1"
-                Padding="12,6"
-                Visibility="Collapsed">
+        <!-- Row 1: TOOLBAR EDIT MODE -->
+        <Border x:Name="EditToolbar" Grid.Row="1" Background="#181825" BorderBrush="#313244" BorderThickness="0,0,0,1" Padding="12,6" Visibility="Collapsed">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-
-                <!-- Editable title -->
-                <TextBox x:Name="EditTitleBox"
-                         Grid.Column="0"
-                         FontSize="16"
-                         FontWeight="Bold"
-                         Foreground="#CDD6F4"
-                         Background="#313244"
-                         BorderBrush="#45475A"
-                         BorderThickness="1"
-                         Padding="6,2"
-                         Margin="0,0,8,0"
-                         VerticalAlignment="Center"
-                         AcceptsReturn="False"
-                         CaretBrush="#CDD6F4" />
-
-                <!-- Save button -->
-                <Button x:Name="SaveButton"
-                        Grid.Column="1"
-                        Content="Save"
-                        FontSize="12"
-                        FontWeight="SemiBold"
-                        Padding="10,4"
-                        MinWidth="60"
-                        Margin="0,0,4,0"
-                        Cursor="Hand"
-                        Background="#1D9E75"
-                        Foreground="White"
-                        BorderThickness="0"
-                        Click="SaveButton_Click" />
-
-                <!-- Cancel button -->
-                <Button x:Name="CancelButton"
-                        Grid.Column="2"
-                        Content="Cancel"
-                        FontSize="12"
-                        FontWeight="SemiBold"
-                        Padding="10,4"
-                        MinWidth="60"
-                        Cursor="Hand"
-                        Background="#313244"
-                        Foreground="#CDD6F4"
-                        BorderThickness="1"
-                        BorderBrush="#45475A"
-                        Click="CancelButton_Click" />
-
-                <!-- ════════════════════════════════════════
-     TEMPLATE METADATA BAR (visible only for .templates/ files)
-     ════════════════════════════════════════ -->
-                <Border x:Name="TemplateBar"
-        Grid.Row="3"
-        Background="#11111B"
-        BorderBrush="#313244"
-        BorderThickness="0,1,0,0"
-        Padding="12,8"
-        VerticalAlignment="Bottom"
-        Visibility="Collapsed">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="16"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-
-                        <!-- Category -->
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="AUTO-CATEGORY"
-                       FontSize="10" FontWeight="SemiBold"
-                       Foreground="#6C7086"
-                       VerticalAlignment="Center"
-                       Margin="0,0,8,0"/>
-                            <ComboBox x:Name="TemplateCategory"
-                      Width="140"
-                      FontSize="12"
-                      Background="#313244"
-                      Foreground="#CDD6F4"
-                      BorderBrush="#45475A"
-                      SelectionChanged="TemplateCategory_SelectionChanged"/>
-                        </StackPanel>
-
-                        <!-- Target folder -->
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="DEFAULT FOLDER"
-                       FontSize="10" FontWeight="SemiBold"
-                       Foreground="#6C7086"
-                       VerticalAlignment="Center"
-                       Margin="0,0,8,0"/>
-                            <TextBox x:Name="TemplateFolderBox"
-                     Width="180"
-                     FontSize="12"
-                     Padding="6,3"
-                     Background="#313244"
-                     Foreground="#CDD6F4"
-                     BorderBrush="#45475A"
-                     BorderThickness="1"
-                     CaretBrush="#CDD6F4"
-                     ToolTip="Project-relative folder path, e.g. Tasks/Daily"
-                     TextChanged="TemplateFolderBox_TextChanged"/>
-                        </StackPanel>
-
-                        <!-- Placeholder for future MD editor toolbar -->
-                        <TextBlock Grid.Column="3"
-                   Text="Template options"
-                   FontSize="10"
-                   Foreground="#45475A"
-                   VerticalAlignment="Center"
-                   HorizontalAlignment="Right"
-                   Margin="0,0,8,0"/>
-                    </Grid>
-                </Border>
-
+                <TextBox x:Name="EditTitleBox" Grid.Column="0" FontSize="16" FontWeight="Bold" Foreground="#CDD6F4" Background="#313244" BorderBrush="#45475A" BorderThickness="1" Padding="6,2" Margin="0,0,8,0" VerticalAlignment="Center" AcceptsReturn="False" CaretBrush="#CDD6F4" />
+                <Button x:Name="SaveButton" Grid.Column="1" Content="Save" FontSize="12" FontWeight="SemiBold" Padding="10,4" MinWidth="60" Margin="0,0,4,0" Cursor="Hand" Background="#1D9E75" Foreground="White" BorderThickness="0" Click="SaveButton_Click" />
+                <Button x:Name="CancelButton" Grid.Column="2" Content="Cancel" FontSize="12" FontWeight="SemiBold" Padding="10,4" MinWidth="60" Cursor="Hand" Background="#313244" Foreground="#CDD6F4" BorderThickness="1" BorderBrush="#45475A" Click="CancelButton_Click" />
             </Grid>
         </Border>
 
-        <!-- ════════════════════════════════════════
-             CONTENT — READ MODE (FlowDocument viewer)
-             ════════════════════════════════════════ -->
-        <FlowDocumentScrollViewer x:Name="ReadContent"
-                                  Grid.Row="2"
-                                  Background="#1E1E2E"
-                                  BorderThickness="0"
-                                  Padding="16,12"
-                                  FontSize="14"
-                                  Foreground="#CDD6F4"
-                                  VerticalScrollBarVisibility="Auto"
-                                  IsToolBarVisible="False">
+        <!-- Row 2: CONTENT READ MODE -->
+        <FlowDocumentScrollViewer x:Name="ReadContent" Grid.Row="2" Background="#1E1E2E" BorderThickness="0" Padding="16,12" FontSize="14" Foreground="#CDD6F4" VerticalScrollBarVisibility="Auto" IsToolBarVisible="False">
             <FlowDocumentScrollViewer.Resources>
-                <!-- ZOSTAW TYLKO JEDEN styl Hyperlink — ten z triggerem -->
                 <Style TargetType="Hyperlink">
                     <Setter Property="Foreground" Value="#89B4FA"/>
                     <Setter Property="TextDecorations" Value="Underline"/>
@@ -312,48 +96,41 @@
             </FlowDocumentScrollViewer.Resources>
         </FlowDocumentScrollViewer>
 
-        <!-- ════════════════════════════════════════
-             CONTENT — EDIT MODE (plain text editor)
-             ════════════════════════════════════════ -->
-        <TextBox x:Name="EditContent"
-                 Grid.Row="2"
-                 FontFamily="Consolas"
-                 FontSize="13"
-                 Foreground="#CDD6F4"
-                 Background="#181825"
-                 BorderThickness="0"
-                 Padding="16,12"
-                 AcceptsReturn="True"
-                 AcceptsTab="True"
-                 VerticalScrollBarVisibility="Auto"
-                 HorizontalScrollBarVisibility="Auto"
-                 Visibility="Collapsed"
-                 SpellCheck.IsEnabled="False"
-                 CaretBrush="#CDD6F4" />
+        <!-- Row 2: CONTENT EDIT MODE -->
+        <TextBox x:Name="EditContent" Grid.Row="2" FontFamily="Consolas" FontSize="13" Foreground="#CDD6F4" Background="#181825" BorderThickness="0" Padding="16,12" AcceptsReturn="True" AcceptsTab="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Visibility="Collapsed" SpellCheck.IsEnabled="False" CaretBrush="#CDD6F4" />
 
-        <!-- WIKI-LINK AUTOCOMPLETE OVERLAY -->
-        <Border x:Name="WikiLinkPopup"
-                Grid.Row="0"
-                Grid.RowSpan="3"
-                Visibility="Collapsed"
-                VerticalAlignment="Top"
-                HorizontalAlignment="Left"
-                Panel.ZIndex="100"
-                Background="#313244"
-                BorderBrush="#45475A"
-                BorderThickness="1"
-                CornerRadius="4">
-            <ListBox x:Name="WikiLinkList"
-                     Background="Transparent"
-                     BorderThickness="0"
-                     Foreground="#CDD6F4"
-                     FontSize="13"
-                     MaxHeight="200"
-                     MinWidth="180"
-                     Focusable="False"
-                     FontFamily="Segoe UI, sans-serif"
-                     MouseLeftButtonUp="WikiLinkList_MouseLeftButtonUp"/>
+        <!-- Row 2: WIKI-LINK AUTOCOMPLETE OVERLAY -->
+        <Border x:Name="WikiLinkPopup" Grid.Row="2" Visibility="Collapsed" VerticalAlignment="Top" HorizontalAlignment="Left" Panel.ZIndex="100" Background="#313244" BorderBrush="#45475A" BorderThickness="1" CornerRadius="4">
+            <ListBox x:Name="WikiLinkList" Background="Transparent" BorderThickness="0" Foreground="#CDD6F4" FontSize="13" MaxHeight="200" MinWidth="180" Focusable="False" FontFamily="Segoe UI, sans-serif" MouseLeftButtonUp="WikiLinkList_MouseLeftButtonUp"/>
         </Border>
 
+        <!-- Row 3: MD TOOLBAR -->
+        <Border x:Name="MdToolbar" Grid.Row="3" Background="#11111B" BorderBrush="#313244" BorderThickness="0,1,0,0" Padding="6,4" Visibility="Collapsed">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" PanningMode="HorizontalOnly">
+                <WrapPanel x:Name="MdToolbarPanel" Orientation="Horizontal" />
+            </ScrollViewer>
+        </Border>
+
+        <!-- Row 4: TEMPLATE BAR -->
+        <Border x:Name="TemplateBar" Grid.Row="4" Background="#11111B" BorderBrush="#313244" BorderThickness="0,1,0,0" Padding="12,8" Visibility="Collapsed">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="AUTO-CATEGORY" FontSize="10" FontWeight="SemiBold" Foreground="#6C7086" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox x:Name="TemplateCategory" Width="140" FontSize="12" Background="#313244" Foreground="#CDD6F4" BorderBrush="#45475A" SelectionChanged="TemplateCategory_SelectionChanged"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="DEFAULT FOLDER" FontSize="10" FontWeight="SemiBold" Foreground="#6C7086" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBox x:Name="TemplateFolderBox" Width="180" FontSize="12" Padding="6,3" Background="#313244" Foreground="#CDD6F4" BorderBrush="#45475A" BorderThickness="1" CaretBrush="#CDD6F4" ToolTip="Project-relative folder path, e.g. Tasks/Daily" TextChanged="TemplateFolderBox_TextChanged"/>
+                </StackPanel>
+                <TextBlock Grid.Column="3" Text="Template options" FontSize="10" Foreground="#45475A" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,8,0"/>
+            </Grid>
+        </Border>
     </Grid>
 </UserControl>
