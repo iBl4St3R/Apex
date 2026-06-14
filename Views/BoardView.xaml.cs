@@ -4,6 +4,7 @@ using System.IO;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -362,8 +363,8 @@ namespace Apex.Views
             // Outer card border
             var cardBorder = new Border
             {
-                Width = effectiveWidth,  
-                Height = effectiveHeight, 
+                Width = effectiveWidth,
+                Height = effectiveHeight,
                 ClipToBounds = true,
                 Background = new SolidColorBrush(Color.FromRgb(30, 30, 46)),
                 BorderBrush = card.Locked
@@ -464,27 +465,17 @@ namespace Apex.Views
             double previewMaxHeight = (card.CustomHeight.HasValue || card.CardSize is "large" or "medium")
                                     ? double.PositiveInfinity
                                     : 64;
-            var previewBlock = BuildPreviewElement(
-    previewText,
-    effectiveWidth,
-    !string.IsNullOrEmpty(fullPath) && File.Exists(fullPath) ? fullPath : null,
-    linkTarget =>
-    {
-        if (Project == null) return;
-        var target = Project.Cards.FirstOrDefault(c =>
-            string.Equals(
-                Path.GetFileNameWithoutExtension(c.RelativePath),
-                linkTarget,
-                StringComparison.OrdinalIgnoreCase));
-        if (target != null)
-            FocusCard(target.RelativePath);
-    },
-    linkTarget => Project?.Cards.Any(c =>
-        string.Equals(
-            Path.GetFileNameWithoutExtension(c.RelativePath),
-            linkTarget,
-            StringComparison.OrdinalIgnoreCase)) == true
-);
+
+            var previewBlock = BuildPreviewElement(previewText, effectiveWidth, !string.IsNullOrEmpty(fullPath) && File.Exists(fullPath) ? fullPath : null, linkTarget =>
+                {
+                    if (Project == null) return;
+                    var target = Project.Cards.FirstOrDefault(c =>
+                    string.Equals(Path.GetFileNameWithoutExtension(c.RelativePath), linkTarget, StringComparison.OrdinalIgnoreCase));
+                    if (target != null)
+                    FocusCard(target.RelativePath);
+                },
+
+            linkTarget => Project?.Cards.Any(c => string.Equals(Path.GetFileNameWithoutExtension(c.RelativePath), linkTarget, StringComparison.OrdinalIgnoreCase)) == true);
 
 
             Grid.SetRow(previewBlock, 1);
@@ -721,13 +712,12 @@ namespace Apex.Views
             }
         }
 
-        private FrameworkElement BuildPreviewElement(
-    string text,
-    double cardWidth,
-    string? fullPath,
-    Action<string>? onLinkClicked = null,
-    Func<string, bool>? linkExists = null)
+        private FrameworkElement BuildPreviewElement(string text, double cardWidth, string? fullPath, Action<string>? onLinkClicked = null, Func<string, bool>? linkExists = null)
         {
+            string? _lastCodeLanguage = null;
+
+
+
             string? noteFolder = fullPath != null ? Path.GetDirectoryName(fullPath) : null;
 
             var stack = new StackPanel
@@ -773,10 +763,16 @@ namespace Apex.Views
                         FlushPendingText(pendingCenter);
                         inCodeBlock = true;
                         codeLines.Clear();
+                        // Zapisz język (np. ```csharp → "csharp")
+                        _lastCodeLanguage = line.Length > 3 ? line[3..].Trim() : null;
                     }
                     else
                     {
                         inCodeBlock = false;
+
+                        // Wyciągnij język z pierwszej linii (zapisz go przy otwarciu bloku)
+                        string codeContent = string.Join("\n", codeLines);
+
                         var codeBorder = new Border
                         {
                             Background = new SolidColorBrush(Color.FromRgb(24, 24, 37)),
@@ -785,19 +781,24 @@ namespace Apex.Views
                             CornerRadius = new CornerRadius(4),
                             Padding = new Thickness(8, 6, 8, 6),
                             Margin = new Thickness(0, 2, 0, 2),
-                            HorizontalAlignment = HorizontalAlignment.Stretch,  // ← dodaj
-                            MaxWidth = cardWidth - 20                           // ← dodaj
+                            HorizontalAlignment = HorizontalAlignment.Stretch,
+                            MaxWidth = cardWidth - 20,
+                            ClipToBounds = true
                         };
-                        var codeText = new TextBlock
+
+                        var codeTb = new TextBlock
                         {
-                            Text = string.Join("\n", codeLines),
                             FontFamily = new FontFamily("Consolas"),
                             FontSize = 10,
-                            Foreground = new SolidColorBrush(Color.FromRgb(186, 194, 222)),
-                            TextWrapping = TextWrapping.NoWrap,   // ← NoWrap żeby kod się nie łamał
-                            MaxWidth = cardWidth - 36             // ← dodaj (cardWidth minus padding border + stackpanel)
+                            TextWrapping = TextWrapping.NoWrap,
+                            MaxWidth = cardWidth - 36
                         };
-                        codeBorder.Child = codeText;
+
+                        var highlightedRuns = MarkdownRenderer.GetHighlightedRuns(codeContent, _lastCodeLanguage ?? "");
+                        foreach (var run in highlightedRuns)
+                            codeTb.Inlines.Add(run);
+
+                        codeBorder.Child = codeTb;
                         stack.Children.Add(codeBorder);
                         codeLines.Clear();
                     }
@@ -883,6 +884,41 @@ namespace Apex.Views
                     pendingLines.Add(cleanedLine);
                 }
             }
+
+            // Flush niezamkniętego bloku kodu (plik ucięty lub karta za mała)
+            if (inCodeBlock && codeLines.Count > 0)
+            {
+                string codeContent = string.Join("\n", codeLines);
+
+                var codeBorder = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(24, 24, 37)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(49, 50, 68)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(8, 6, 8, 6),
+                    Margin = new Thickness(0, 2, 0, 2),
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    MaxWidth = cardWidth - 20,
+                    ClipToBounds = true
+                };
+
+                var codeTb = new TextBlock
+                {
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize = 10,
+                    TextWrapping = TextWrapping.NoWrap,
+                    MaxWidth = cardWidth - 36
+                };
+
+                var highlightedRuns = MarkdownRenderer.GetHighlightedRuns(codeContent, _lastCodeLanguage ?? "");
+                foreach (var run in highlightedRuns)
+                    codeTb.Inlines.Add(run);
+
+                codeBorder.Child = codeTb;
+                stack.Children.Add(codeBorder);
+            }
+
 
             FlushPendingText(pendingCenter);
             return stack;
@@ -1353,7 +1389,7 @@ namespace Apex.Views
             e.Handled = true;
         }
 
-        
+
 
 
 
@@ -1382,7 +1418,7 @@ namespace Apex.Views
             if (sender is System.Windows.Shapes.Ellipse handle)
                 handle.ReleaseMouseCapture();
 
-            
+
 
             _isDraggingBendHandle = false;
 
@@ -1498,16 +1534,12 @@ namespace Apex.Views
             return menu;
         }
 
-        private static TextBlock BuildPreviewTextBlock(
-    string text,
-    double maxHeight,
-    Action<string>? onLinkClicked = null,
-    Func<string, bool>? linkExists = null)
+        private static TextBlock BuildPreviewTextBlock(string text,double maxHeight,Action<string>? onLinkClicked = null,Func<string, bool>? linkExists = null)
         {
             var tb = new TextBlock
             {
                 FontSize = 11,
-                Foreground = new SolidColorBrush(Color.FromRgb(108, 112, 134)),
+                Foreground = new SolidColorBrush(Color.FromRgb(166, 173, 200)), // A6ADC8 — było 108,112,134
                 TextWrapping = TextWrapping.Wrap,
                 MaxHeight = maxHeight,
                 Margin = new Thickness(0, 4, 0, 0),
@@ -1531,16 +1563,17 @@ namespace Apex.Views
                 if (headingMatch.Success)
                 {
                     double fs = headingMatch.Groups[1].Value.Length switch { 1 => 14, 2 => 13, _ => 12 };
-                    tb.Inlines.Add(new System.Windows.Documents.Run(headingMatch.Groups[2].Value)
+                    // heading — był 180,194,222 <- kolorowanie sekcji naglowkow
+                    tb.Inlines.Add(new Run(headingMatch.Groups[2].Value)
                     {
                         FontWeight = FontWeights.Bold,
                         FontSize = fs,
-                        Foreground = new SolidColorBrush(Color.FromRgb(180, 194, 222))
+                        Foreground = new SolidColorBrush(Color.FromRgb(166, 173, 200)) 
                     });
                     continue;
                 }
 
-               
+
 
                 if (string.IsNullOrWhiteSpace(line))
                 {
@@ -1558,7 +1591,7 @@ namespace Apex.Views
     System.Windows.Documents.InlineCollection inlines,
     string line,
     Action<string>? onLinkClicked = null,
-    Func<string, bool>? linkExists = null)  
+    Func<string, bool>? linkExists = null)
         {
             // Najpierw rozbij linię na segmenty po markerach wiki-linków
             var markerPattern = new System.Text.RegularExpressions.Regex(@"apex_link§([^§]+)§");
@@ -1608,8 +1641,9 @@ namespace Apex.Views
                 AddFormattedSegment(inlines, line[lastIndex..]);
         }
 
-        private static void AddFormattedSegment(
-    System.Windows.Documents.InlineCollection inlines, string text)
+
+        //kolorowanie board czcionki
+        private static void AddFormattedSegment(System.Windows.Documents.InlineCollection inlines, string text)
         {
             var pattern = new System.Text.RegularExpressions.Regex(
                 @"(\*\*(.+?)\*\*)|(\*(.+?)\*)|(`(.+?)`)");
@@ -1618,22 +1652,25 @@ namespace Apex.Views
             foreach (System.Text.RegularExpressions.Match m in pattern.Matches(text))
             {
                 if (m.Index > lastIndex)
-                    inlines.Add(new System.Windows.Documents.Run(text[lastIndex..m.Index])
+                    // zwykły tekst — był 108,112,134
+                    inlines.Add(new Run(text[lastIndex..m.Index])
                     {
-                        Foreground = new SolidColorBrush(Color.FromRgb(108, 112, 134))
+                        Foreground = new SolidColorBrush(Color.FromRgb(166, 173, 200))
                     });
 
                 if (m.Groups[1].Success)
-                    inlines.Add(new System.Windows.Documents.Run(m.Groups[2].Value)
+                    // bold — był 180,194,222
+                    inlines.Add(new Run(m.Groups[2].Value)
                     {
                         FontWeight = FontWeights.Bold,
-                        Foreground = new SolidColorBrush(Color.FromRgb(180, 194, 222))
+                        Foreground = new SolidColorBrush(Color.FromRgb(166, 173, 196)) // jaśniejszy dla bold
                     });
                 else if (m.Groups[3].Success)
-                    inlines.Add(new System.Windows.Documents.Run(m.Groups[4].Value)
+                    // italic — był 147,163,200  
+                    inlines.Add(new Run(m.Groups[4].Value)
                     {
                         FontStyle = FontStyles.Italic,
-                        Foreground = new SolidColorBrush(Color.FromRgb(147, 163, 200))
+                        Foreground = new SolidColorBrush(Color.FromRgb(166, 173, 200))
                     });
                 else if (m.Groups[5].Success)
                     inlines.Add(new System.Windows.Documents.Run(m.Groups[6].Value)
@@ -1647,9 +1684,10 @@ namespace Apex.Views
             }
 
             if (lastIndex < text.Length)
-                inlines.Add(new System.Windows.Documents.Run(text[lastIndex..])
+                // tekst po ostatniej sekcji — był 108,112,134
+                inlines.Add(new Run(text[lastIndex..])
                 {
-                    Foreground = new SolidColorBrush(Color.FromRgb(108, 112, 134))
+                    Foreground = new SolidColorBrush(Color.FromRgb(166, 173, 200))
                 });
         }
 
@@ -2595,7 +2633,7 @@ namespace Apex.Views
             }
             else if (e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
-                if (TryHandleClipboardImage())
+                if (TryHandleClipboard())
                     e.Handled = true;
             }
         }
@@ -2746,13 +2784,11 @@ namespace Apex.Views
             FileService.SaveProject(Project);
         }
 
-        private bool TryHandleClipboardImage()
+        private bool TryHandleClipboard()
         {
             if (Project == null) return false;
 
-            BitmapSource? bitmap = null;
-
-            // Priorytet 1: plik graficzny skopiowany z eksploratora (np. .png/.jpg)
+            // Priorytet 1: plik graficzny z eksploratora
             if (Clipboard.ContainsFileDropList())
             {
                 var files = Clipboard.GetFileDropList();
@@ -2762,7 +2798,6 @@ namespace Apex.Views
                     if (file == null) continue;
                     if (imageExtensions.Contains(Path.GetExtension(file).ToLowerInvariant()) && File.Exists(file))
                     {
-                        // Plik graficzny ze schowka — użyj ścieżki bezpośrednio
                         Point dropPos = GetViewportCenterInCanvas();
                         CreateNewImageFromFile(file, dropPos);
                         return true;
@@ -2770,16 +2805,112 @@ namespace Apex.Views
                 }
             }
 
-            // Priorytet 2: obraz w schowku (screenshot, wycinka ekranu, kopiuj z przeglądarki)
+            // Priorytet 2: obraz w schowku (screenshot)
             if (Clipboard.ContainsImage())
             {
-                bitmap = Clipboard.GetImage();
+                var bitmap = Clipboard.GetImage();
                 if (bitmap != null)
                 {
                     Point dropPos = GetViewportCenterInCanvas();
                     HandleImageDrop(bitmap, dropPos);
                     return true;
                 }
+            }
+
+            // Priorytet 3: tekst w schowku → nowa karta z contentem
+            if (Clipboard.ContainsText())
+            {
+                string clipText = Clipboard.GetText().Trim();
+                if (string.IsNullOrEmpty(clipText)) return false;
+
+                Point pos = GetViewportCenterInCanvas();
+
+                var templates = TemplateService.LoadAll(Project.RootFolder);
+                var dialog = new NewNoteDialog(Project.RootFolder, templates)
+                {
+                    Owner = Window.GetWindow(this)
+                };
+
+                if (dialog.ShowDialog() != true) return true; // obsłużone, user anulował
+
+                string title = dialog.NoteTitle;
+                foreach (char c in Path.GetInvalidFileNameChars())
+                    title = title.Replace(c.ToString(), "");
+
+                if (string.IsNullOrWhiteSpace(title)) return true;
+
+                string targetFolder = Project.RootFolder;
+                string? autoCategory = null;
+
+                if (dialog.SelectedTemplate != null)
+                {
+                    string desired = string.IsNullOrWhiteSpace(dialog.SelectedTemplate.DefaultFolder)
+                        ? Project.RootFolder
+                        : Path.GetFullPath(Path.Combine(
+                            Project.RootFolder,
+                            dialog.SelectedTemplate.DefaultFolder.Replace('/', Path.DirectorySeparatorChar)));
+
+                    if (!Directory.Exists(desired))
+                        Directory.CreateDirectory(desired);
+
+                    targetFolder = desired;
+                    autoCategory = dialog.SelectedTemplate.DefaultCategoryId;
+                }
+
+                string relativePath = FileService.GetRelativePath(
+                    Project.RootFolder,
+                    Path.Combine(targetFolder, title + ".md"));
+
+                string fullPath = FileService.GetFullPath(Project.RootFolder, relativePath);
+
+                if (File.Exists(fullPath))
+                {
+                    System.Windows.MessageBox.Show(
+                        $"A note named \"{title}.md\" already exists.",
+                        "Duplicate Name", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return true;
+                }
+
+                try
+                {
+                    // Zawartość = szablon (jeśli wybrany) + tekst ze schowka
+                    string templateContent = dialog.SelectedTemplate != null
+                        ? TemplateService.ReadContent(Project.RootFolder, dialog.SelectedTemplate)
+                        : $"# {title}\n\n";
+
+                    // Doklejamy clipboard pod contentem szablonu
+                    string content = templateContent.TrimEnd() + "\n\n" + clipText;
+
+                    File.WriteAllText(fullPath, content);
+
+                    var card = new NoteCard(relativePath, pos.X, pos.Y)
+                    {
+                        CategoryId = autoCategory
+                    };
+                    Project.Cards.Add(card);
+
+                    var element = CreateCardElement(card);
+                    Canvas.SetLeft(element, card.BoardX);
+                    Canvas.SetTop(element, card.BoardY);
+                    BoardCanvas.Children.Add(element);
+
+                    FileService.SaveProject(Project);
+
+                    // Otwórz w edit mode
+                    PreviewRequested?.Invoke(card);
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        CardEditRequested?.Invoke(card);
+                    }), System.Windows.Threading.DispatcherPriority.Background);
+                }
+                catch (Exception ex)
+                {
+                    System.Windows.MessageBox.Show(
+                        $"Failed to create note:\n{ex.Message}",
+                        "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+
+                return true;
             }
 
             return false;

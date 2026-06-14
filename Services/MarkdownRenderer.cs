@@ -43,7 +43,7 @@ public static class MarkdownRenderer
             {
                 FontFamily = new FontFamily("Segoe UI, sans-serif"),
                 FontSize = 14,
-                Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244)),
+                Foreground = new SolidColorBrush(Color.FromRgb(166, 173, 200)), // A6ADC8
                 Background = new SolidColorBrush(Color.FromRgb(30, 30, 46)),
                 LineHeight = 1.4,
                 PagePadding = new Thickness(0),
@@ -101,11 +101,7 @@ public static class MarkdownRenderer
         return paragraph;
     }
 
-    private static Paragraph RenderHeading(
-    Markdig.Syntax.HeadingBlock heading,
-    Action<string>? onLinkClicked,
-    Func<string, bool>? linkExists,
-    string? noteFolder = null)
+    private static Paragraph RenderHeading(Markdig.Syntax.HeadingBlock heading,Action<string>? onLinkClicked,Func<string, bool>? linkExists,string? noteFolder = null)
     {
         double fontSize = heading.Level switch { 1 => 28, 2 => 22, 3 => 18, _ => 16 };
         var paragraph = new Paragraph
@@ -113,7 +109,12 @@ public static class MarkdownRenderer
             Margin = new Thickness(0, heading.Level == 1 ? 16 : 12, 0, 8),
             FontSize = fontSize,
             FontWeight = heading.Level <= 2 ? FontWeights.Bold : FontWeights.SemiBold,
-            Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244))
+            Foreground = new SolidColorBrush(heading.Level switch
+            {
+                1 => Color.FromRgb(186, 194, 222),  // BAC2DE — H1, wyraźny ale nie krzyczy
+                2 => Color.FromRgb(180, 190, 216),  // trochę ciemniejszy dla H2
+                _ => Color.FromRgb(172, 180, 208)   // jeszcze ciszej dla H3+
+            })
         };
         RenderInlines(heading.Inline, paragraph.Inlines, onLinkClicked, linkExists, noteFolder);
         return paragraph;
@@ -163,7 +164,7 @@ public static class MarkdownRenderer
                     };
                     para.Inlines.Add(new Run(cleaned)
                     {
-                        Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244))
+                        Foreground = new SolidColorBrush(Color.FromRgb(166, 173, 200)) // A6ADC8
                     });
                     section.Blocks.Add(para);
                     pendingCenter = false; // reset po użyciu
@@ -295,7 +296,7 @@ public static class MarkdownRenderer
         return paragraph;
     }
 
-    private static List<Inline> GetHighlightedRuns(string code, string language)
+    public static List<Inline> GetHighlightedRuns(string code, string language)
     {
         var result = new List<Inline>();
 
@@ -572,11 +573,7 @@ public static class MarkdownRenderer
         return new SolidColorBrush(Color.FromRgb(205, 214, 244));
     }
 
-    private static void RenderLiteralWithMarkers(
-        string text,
-        InlineCollection target,
-        Action<string>? onLinkClicked,
-        Func<string, bool>? linkExists = null)
+    private static void RenderLiteralWithMarkers(string text, InlineCollection target, Action<string>? onLinkClicked, Func<string, bool>? linkExists = null)
     {
         int lastIndex = 0;
 
@@ -585,7 +582,7 @@ public static class MarkdownRenderer
             if (m.Index > lastIndex)
                 target.Add(new Run(text[lastIndex..m.Index])
                 {
-                    Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244))
+                    Foreground = new SolidColorBrush(Color.FromRgb(166, 173, 200)) // A6ADC8
                 });
 
             string linkTarget = m.Groups[1].Value;
@@ -596,7 +593,7 @@ public static class MarkdownRenderer
         if (lastIndex < text.Length)
             target.Add(new Run(text[lastIndex..])
             {
-                Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 244))
+                Foreground = new SolidColorBrush(Color.FromRgb(166, 173, 200)) // A6ADC8
             });
     }
 

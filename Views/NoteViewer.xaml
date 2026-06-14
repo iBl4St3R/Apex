@@ -85,10 +85,10 @@
                 </Style>
                 <Style TargetType="Paragraph">
                     <Setter Property="Margin" Value="0,0,0,8" />
-                    <Setter Property="Foreground" Value="#CDD6F4" />
+                    <Setter Property="Foreground" Value="#BAC2DE" />
                 </Style>
                 <Style TargetType="Run">
-                    <Setter Property="Foreground" Value="#CDD6F4" />
+                    <Setter Property="Foreground" Value="#BAC2DE" />
                 </Style>
                 <Style TargetType="Section">
                     <Setter Property="Margin" Value="0" />
