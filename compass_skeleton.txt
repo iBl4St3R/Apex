@@ -1,0 +1,32 @@
+§L001§ App | file:App.xaml.cs | layer:ui | tags: | ns:Apex | depends:StartupEventArgs | inherits:System.Windows.Application | notes:
+§L002§ MainWindow | file:MainWindow.xaml.cs | layer:ui | tags: | ns:Apex | props:Project | owns:ViewMode,BoardView,StructureView,NoteViewer,MergeViewer | depends:ViewMode,NoteCard,RoutedEventArgs,DragCompletedEventArgs,UIElement,KeyEventArgs,TextChangedEventArgs,MouseButtonEventArgs,SearchResult,EventArgs,IntPtr | inherits:Window | notes:
+§L003§ SearchResult | file:MainWindow.xaml.cs | layer:ui | tags: | ns:Apex | props:DisplayName,RelativePath,Card | notes:
+§L004§ ApexProject | file:ApexProject.cs | layer:model | tags: | ns:Apex.Models | props:ProjectName,RootFolder,LastView,LastZoom,ThemeOverride,Categories,Cards,ImageCards,TitleCards,Relations | notes:
+§L005§ Category | file:Category.cs | layer:model | tags: | ns:Apex.Models | props:Id,Name,Color | notes:
+§L006§ ImageCard | file:ImageCard.cs | layer:model | tags: | ns:Apex.Models | props:Id,RelativePath,BoardX,BoardY,CategoryId,Locked,CustomWidth,CustomHeight | notes:
+§L007§ NoteCard | file:NoteCard.cs | layer:model | tags: | ns:Apex.Models | props:RelativePath,BoardX,BoardY,CategoryId,CardSize,CustomWidth,CustomHeight,Locked | notes:
+§L008§ NoteTemplate | file:NoteTemplate.cs | layer:model | tags: | ns:Apex.Models | props:TemplateName,MdFileName,DefaultCategoryId,DefaultFolder | notes:
+§L009§ Relation | file:Relation.cs | layer:model | tags: | ns:Apex.Models | props:Id,SourceType,SourceRef,TargetType,TargetRef,BendX,BendY,LineColor,LineThickness | depends:Relation | notes:
+§L010§ TitleCard | file:TitleCard.cs | layer:model | tags: | ns:Apex.Models | props:Id,Text,BoardX,BoardY,Locked,FontFamily,FontSize,FontColor,Bold,Italic,BackgroundColor,CustomWidth,CustomHeight | notes:
+§L011§ ConnectionResolver | file:ConnectionResolver.cs | layer:service | tags: | ns:Apex.Services | owns:Regex | depends:ApexProject | notes:
+§L012§ ExportService | file:ExportService.cs | layer:service | tags: | ns:Apex.Services | owns:MarkdownPipeline,JsonSerializerOptions | depends:ApexProject | notes:
+§L013§ FileService | file:FileService.cs | layer:service | tags: | ns:Apex.Services | owns:JsonSerializerOptions | depends:ApexProject | notes:
+§L014§ RecentProjectEntry | file:FileService.cs | layer:model | tags: | ns:Apex.Services | props:Path,Name,LastOpened | notes:
+§L015§ MarkdownRenderer | file:MarkdownRenderer.cs | layer:service | tags: | ns:Apex.Services | owns:Regex,MarkdownPipeline | depends:Action<string>,Func<string, bool>,MarkdownObject,ParagraphBlock,HeadingBlock,HtmlBlock,InlineCollection,FencedCodeBlock,CodeBlock,ListBlock,ContainerInline,HighlightingColor,EmphasisInline,LinkInline | notes:
+§L016§ PreviewCache | file:PreviewCache.cs | layer:service | tags: | ns:Apex.Services | owns:ConcurrentDictionary,FileSystemWatcher | implements:IDisposable | notes:
+§L017§ TemplateService | file:TemplateService.cs | layer:service | tags: | ns:Apex.Services | owns:JsonSerializerOptions | depends:NoteTemplate | notes:
+§L018§ BoardView | file:BoardView.xaml.cs | layer:ui | tags: | ns:Apex.Views | props:Project | owns:Point,Border,NoteCard,PreviewCache,ResizeEdge,Line,Polygon,Relation | depends:ApexProject,NoteCard,MouseButtonEventArgs,MouseEventArgs,Action<string>,Func<string, bool>,Border,KeyEventArgs,Point,Relation,Polygon,Ellipse,InlineCollection,ImageCard,TitleCard,DependencyObject,MouseWheelEventArgs,BitmapSource,Func<T, bool> | inherits:UserControl | notes:
+§L019§ CategoryManagerWindow | file:CategoryManagerWindow.xaml.cs | layer:ui | tags: | ns:Apex.Views | owns:ApexProject,Category,string[],Border | depends:Border,TextChangedEventArgs,RoutedEventArgs | inherits:Window | notes:
+§L020§ CategoryViewModel | file:CategoryManagerWindow.xaml.cs | layer:ui | tags: | ns:Apex.Views | props:Name,Id,Color | notes:
+§L021§ MergeViewer | file:MergeViewer.xaml.cs | layer:ui | tags: | ns:Apex.Views | inherits:UserControl | notes:
+§L022§ NewNoteDialog | file:NewNoteDialog.cs | layer:ui | tags: | ns:Apex.Views | props:NoteTitle,SelectedTemplate | owns:TextBox,NoteTemplate,WrapPanel,Button | depends:NoteTemplate,Button,Color,Brush | inherits:Window | notes:
+§L023§ NoteViewer | file:NoteViewer.xaml.cs | layer:ui | tags: | ns:Apex.Views | owns:ApexProject,FileSystemWatcher,NoteTemplate | depends:ApexProject,SelectionChangedEventArgs,TextChangedEventArgs,RoutedEventArgs,KeyEventArgs,MouseButtonEventArgs,FileSystemEventArgs,Button[] | inherits:UserControl | notes:
+§L024§ RelationSettingsDialog | file:RelationSettingsDialog.cs | layer:ui | tags: | ns:Apex.Views | props:ResultColor,ResultThickness | owns:Slider,TextBlock,Border,(string Hex, string Label)[] | depends:Border,Color,Brush | inherits:Window | notes:
+§L025§ StartupWindow | file:StartupWindow.xaml.cs | layer:ui | tags: | ns:Apex.Views | depends:RoutedEventArgs | inherits:Window | notes:
+§L026§ InputDialog | file:StartupWindow.xaml.cs | layer:ui | tags: | ns:Apex.Views | props:Answer | owns:TextBox | inherits:Window | notes:
+§L027§ StructureView | file:StructureView.xaml.cs | layer:ui | tags: | ns:Apex.Views | owns:ApexProject | depends:ApexProject,DirectoryInfo,FileTreeItem,MouseButtonEventArgs,RoutedEventArgs,DependencyObject | inherits:UserControl | notes:
+§L028§ FileTreeItem | file:StructureView.xaml.cs | layer:ui | tags: | ns:Apex.Views | props:DisplayName,RelativePath,FullPath,IsFolder,Depth,HasCategory,CategoryName,CategoryColor,Children,MissingCard,IsSelected | inherits:System.ComponentModel.INotifyPropertyChanged | notes:
+§L029§ IndentConverter | file:StructureView.xaml.cs | layer:ui | tags: | ns:Apex.Views | depends:Type,CultureInfo | implements:IValueConverter | notes:
+§L030§ TemplateManagerWindow | file:TemplateManagerWindow.cs | layer:ui | tags: | ns:Apex.Views | owns:ApexProject,ListBox | depends:Color,Brush | inherits:Window | notes:
+§L031§ TitleCardDialog | file:TitleCardDialog.cs | layer:ui | tags: | ns:Apex.Views | props:ResultText,ResultFontFamily,ResultFontSize,ResultFontColor,ResultBackgroundColor,ResultBold,ResultItalic | owns:TextBox,ListBox,Slider,TextBlock,Border,CheckBox,string[],(string Hex, string Label)[] | depends:Border,Color,Brush | inherits:Window | notes:
+§L032§ WikiLinkSelector | file:WikiLinkSelector.cs | layer:unknown | tags: | ns:Apex.Views | props:SelectedCard | owns:TextBox,ListBox | depends:KeyEventArgs | inherits:Window | notes:
